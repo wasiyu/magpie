@@ -62,7 +62,7 @@ func SetJSON(path string, kvs ...KV) error {
 			return fmt.Errorf("%s: %w", path, err)
 		}
 	}
-	out, err := checkJSONC(keepCRLF(raw, orig), dropLoneCommas(orig))
+	out, err := checkJSONC(keepCRLF(raw, orig))
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
@@ -103,7 +103,7 @@ func PatchJSON(raw []byte, set []KV, del []string) ([]byte, error) {
 			return nil, err
 		}
 	}
-	out, err := checkJSONC(keepCRLF(raw, orig), dropLoneCommas(orig))
+	out, err := checkJSONC(keepCRLF(raw, orig))
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +302,6 @@ func DelJSON(path string, keyPaths ...string) error {
 	if err != nil || len(bytes.TrimSpace(raw)) == 0 {
 		return err
 	}
-	orig := raw
 	raw = dropLoneCommas(raw)
 	changed := false
 	for _, kp := range keyPaths {
@@ -317,7 +316,7 @@ func DelJSON(path string, keyPaths ...string) error {
 	if !changed {
 		return nil
 	}
-	out, err := checkJSONC(raw, dropLoneCommas(orig))
+	out, err := checkJSONC(raw)
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
