@@ -1,5 +1,11 @@
 # Sync and backup
 
+The GUI's new export filenames use the build's product id (`jellytool` in a
+Jellytool build): backup, request archive, request CSV and session Markdown.
+This is a display change only. The `.magpie-backup` extension, encrypted
+envelope, sync folder names and existing files retain their compatibility
+identifiers; no existing export or sync object is renamed.
+
 `internal/backup` collects magpie's portable setup into a passphrase-sealed
 bundle. `internal/davsync` keeps that bundle in a WebDAV folder, an S3 bucket
 or a GitHub repository. It merges changes between computers; it does not

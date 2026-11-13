@@ -14,6 +14,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -780,7 +781,7 @@ func plugged(at place, p *agentplug.Agent) *Agent {
 				return nil
 			},
 			Options: func(map[string]string) []Option {
-				return []Option{{Value: magpieID, Label: "magpie", Icon: "magpie"}}
+				return []Option{{Value: magpieID, Label: product.Name, Icon: "magpie"}}
 			},
 		}}
 	}

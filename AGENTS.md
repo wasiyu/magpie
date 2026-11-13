@@ -17,6 +17,30 @@ Before reviewing a community PR, read [contributors](docs/contributors.md):
 what stops a review for possible harm, what is closed unreviewed, and the
 authors whose PRs are closed on sight.
 
+## Running a local build
+
+Open a locally packaged Jellytool with
+[build/jellytool/launch.py](build/jellytool/launch.py), not `open`:
+
+```sh
+build/jellytool/launch.py ~/.cache/jellytool-build/artifacts/<name>/Jellytool.app
+```
+
+Jellytool holds a single-instance lock in its data root, so `open -n` — how a
+*second* instance is asked for — starts one that finds the lock taken and exits
+before drawing anything. It reads as "the app will not start", and every retry
+fails the same way while the build opened before keeps the lock. The launcher
+ends the previous Jellytool, waits for its lock, then opens the requested
+build. It requires AppKit to finish launching, the instance lock to be held,
+and that PID to remain alive before reporting success. Concurrent launchers
+for the same data root are rejected. An application startup failure is not
+automatically relaunched; its output is saved beside the instance lock as
+`jellytool-instance.launch.log` and included in the error. Only LaunchServices
+error `-600` gets bounded retries. Pass arguments after `--` for Jellytool
+itself (`launch.py <app> -- app`; Jellytool does not accept `tray`). Portable
+builds use their own data root. See [the shell contract](docs/subsystems/gui-shell.md#local-jellytool-launches)
+for the readiness checks and offline regression command.
+
 ## Lessons
 
 Before changing code, read [LESSONS.md](LESSONS.md): what recent merged

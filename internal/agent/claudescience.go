@@ -31,6 +31,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"log"
 	"os"
 	"path/filepath"
@@ -636,7 +637,7 @@ func scienceAgent(h *scienceHost) *Agent {
 			},
 			Set: func(v string) error { return h.on(v != "") },
 			Options: func(map[string]string) []Option {
-				return []Option{{Value: magpieID, Label: "magpie", Icon: "magpie",
+				return []Option{{Value: magpieID, Label: product.Name, Icon: "magpie",
 					Note: "magpie restarts its daemon with ANTHROPIC_BASE_URL set to the gateway; a session running in it is cut off"}}
 			},
 		}},

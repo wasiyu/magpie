@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,14 +24,10 @@ const groupUsage = `usage:
   magpie group add <name> models=<m1>[,m2…] [routing=…] [stays=…]
                                           make a group; agents pick it as group/<id>, the id made from the name;
                                           a name in use replaces that group
-  magpie group set <id> k=v…              change one: name, note (your own word on it, shown under its name:
-                                          note='for the work key'; empty clears it),
-                                          models (the whole list, in order, patterns too),
+  magpie group set <id> k=v…              change one: name, models (the whole list, in order, patterns too),
                                           models+=<m>[,m2…] (append), models-=<m>[,m2…] (drop), routing, stays,
                                           context (how long a request agents are told it takes: 272k; smallest
-                                          is its smallest model's; empty is its largest model's),
-                                          compact (where Codex and Claude Code compact a conversation on it: 200k;
-                                          empty leaves it to its models' and Long conversations), levels (the reasoning levels agents are offered:
+                                          is its smallest model's; empty is its largest model's), levels (the reasoning levels agents are offered:
                                           levels=none,low,medium,high,xhigh,max; empty is those every model has —
                                           a model without the one asked is sent its nearest),
                                           family (a tag: magpie visible shows agents families, not each group),
@@ -38,13 +35,8 @@ const groupUsage = `usage:
                                           it is in follow; an agent set to the old id needs setting again),
                                           effort=auto (the classifier picks each turn's reasoning; needs classifier=),
                                           effort=agent (the agent's again), classifier=<provider/model>|group/<id>,
-                                          intent-sure=<0…1> (how sure the classifier must be of an intent for it
-                                          to count; 0 takes its likeliest however unsure, "none of these" never
-                                          counting; empty is the 0.4 groups have always asked),
                                           pick=<model> (routing=manual, every request to that one of its models),
                                           fast=<m1>[,m2…] (the models sent in their vendor's fast mode; empty for none),
-                                          ultra=<m1>[,m2…] (those of them sent in the faster Ultrafast mode of a ChatGPT
-                                          account that offers it, priority otherwise; each is made fast too; empty for none),
                                           weight=<m1>=<n>[,m2=<n>…] (each model's share under routing=weight,
                                           1 to 1000; a model not named keeps its own, 1 by default; empty for all 1),
                                           listed=no (its models leave the lists agents see, offered through the
@@ -66,8 +58,6 @@ const groupUsage = `usage:
                                           listed or served — yours, and found ones you changed, stay — and an
                                           agent set to one is moved to its model from one provider; on brings
                                           them back
-  magpie group auto skip <provider>…      keep providers out of the groups magpie finds (groups you made or
-                                          changed keep them); skip none lets every one back in
   magpie group rule add|rm|mv <id> …      rules: which model a turn goes to first, by its length, an image,
                                           the reasoning asked for or the agent (magpie group rule help)
 
@@ -85,9 +75,6 @@ const groupUsage = `usage:
            (a rule can send to either). A model whose own id ends so (a :free, :7b or :0) stays as it is
            provider/model:low+high gives it several levels for the agent to choose from, each sent at the
            level the model has nearest, and the group offers agents those for it
-           provider/model[:effort][:fast]#<account> sends it on that one account or key of its provider alone,
-           by its id or the name magpie accounts shows: the same model on two accounts is two members, and
-           with routing order they are tried top first (codex/gpt-6-astra#work codex/gpt-6-astra#home)
            provider/model[:effort]:fast sends the member in its vendor's fast mode: priority processing on a
            ChatGPT account (Codex's Fast) or an OpenAI key, Cursor's -fast model, Claude's fast mode on an
            Anthropic key for Opus 4.8 and 5; a model without one is refused (codex/gpt-6.1-sol:high:fast)
@@ -95,8 +82,6 @@ const groupUsage = `usage:
            * is any run of characters, / too, over the provider/model id in any case (openrouter/*:free,
            *-free, opencode-zen/*), or re:<regexp> matching the whole id, in any case too (re:openrouter/.*:(free|beta));
            (?-i) in the regexp makes case matter (re:(?-i)openrouter/.*:FREE).
-           free: before a pattern keeps only the models it matches that their last catalog marks free
-           (free:workbuddy/*): the vendor's free flag as last read, not a promise of no charge.
            Quote it for the shell. The group keeps the pattern, not its models: one the vendor adds joins,
            one it drops leaves. The models you name come first, in your order, then those the patterns
            match, in the order magpie models lists them; one both named and matched keeps its named place.
@@ -104,10 +89,7 @@ const groupUsage = `usage:
            how many models each matches now, and says when one matches nothing
   routing  smart   (default) of the subscriptions with quota to spare, the one renewing soonest first
            order   the first model until it can't answer, then the next
-           drain   one account or key until it is used up, then the next, and stays there: an
-                   earlier one that renews meanwhile doesn't take the requests back
-           rotate  each message you send goes to the next member's account or key, its tool calls
-                   staying with it; with stays=session a whole conversation stays on one
+           rotate  each conversation's next turn goes to the next member's account or key
            usage   the account or key with the most of its allowance left first
            pace    the account with the most of its week left per hour until it renews first, so less
                    of a week is lost at its reset
@@ -128,9 +110,7 @@ const groupUsage = `usage:
                    asked in words — rates how hard it is, and the turn's requests
                    reason at low, medium, high or xhigh in place of the agent's level; only those
                    the agent asked to reason, never one it turned off (none). A route's effort
-                   is what the agent asked, each try's what its model was sent. A group in the
-                   group, effort=auto of its own, is asked only when this one gave no pick:
-                   the outermost pick stands
+                   is what the agent asked, each try's what its model was sent
 
   e.g. magpie group add "Opus anywhere" models=claude/claude-opus-5-5,copilot/claude-opus-5.5 routing=order
        magpie group set opus-anywhere stays=session models+=openrouter/anthropic/claude-opus-5.5
@@ -142,9 +122,6 @@ const groupUsage = `usage:
        magpie group add my-free-pool models='openrouter/*:free,opencode-zen/*-free' routing=order
        magpie group set opus-anywhere routing=weight weight=claude/claude-opus-5-5=3
        magpie group set deepseek-anywhere routing=fast   # the provider that answered it fastest lately first
-       magpie group set deepseek-anywhere routing=cheap  # the provider it costs least on now first (DeepSeek's off-peak hours)
-       magpie group set free-pool routing=drain          # one account until it is used up, then the next, never back
-       magpie group set checkins routing=expiring        # free quota first, the soonest to expire first; paid only when none is left
        magpie group pick opus-anywhere copilot/claude-opus-5.5
        magpie claude group/opus-anywhere`
 
@@ -162,9 +139,6 @@ var routingNames = []struct {
 	{provider.Weighted, "weight", []string{"weighted", "by-weight", "weighted-round-robin", "wrr"}},
 	{provider.FreeFirst, "free", []string{"free-first", "freest", "no-cost"}},
 	{provider.Fastest, "fast", []string{"fastest", "speed", "speed-first"}},
-	{provider.Cheapest, "cheap", []string{"cheapest", "cheapest-first", "price", "cost"}},
-	{provider.Drain, "drain", []string{"until-used-up", "use-up", "sticky"}},
-	{provider.FreeExpiring, "expiring", []string{"free-expiring", "free-expiry", "free-soonest", "soonest-free"}},
 	{provider.Manual, "manual", []string{"pick", "picked", "pinned"}},
 }
 
@@ -192,7 +166,7 @@ func parseRouting(v string) (string, error) {
 		}
 		names = append(names, r.name)
 	}
-	return "", fmt.Errorf("routing %q is not one magpie has: %s, or <plugin>/<name> for a gateway plugin's", v, strings.Join(names, ", "))
+	return "", fmt.Errorf(product.Text("routing %q is not one magpie has: %s, or <plugin>/<name> for a gateway plugin's"), v, strings.Join(names, ", "))
 }
 
 func parseStays(v string) (string, error) {
@@ -204,7 +178,7 @@ func parseStays(v string) (string, error) {
 		}
 		names = append(names, s.name)
 	}
-	return "", fmt.Errorf("stays %q is not one magpie has: %s", v, strings.Join(names, ", "))
+	return "", fmt.Errorf(product.Text("stays %q is not one magpie has: %s"), v, strings.Join(names, ", "))
 }
 
 // routingName is what the CLI calls routing v: a plugin's, or one it
@@ -282,19 +256,6 @@ func memberResolver(keep []string) func(string) (string, error) {
 		if slices.Contains(keep, id) {
 			return id, nil
 		}
-		if member, acct := provider.MemberAccount(id); acct != "" {
-			// on one account or key of its own (EastonXvii on X): the
-			// member as any other; SaveGroup finds the account by its id or
-			// name, and refuses one it has none such for
-			if provider.IsGroupRef(provider.CanonicalRef(member)) {
-				return "", fmt.Errorf("%s is a group: its models are sent on the accounts it says, so it takes no %s%s", member, provider.AccountMark, acct)
-			}
-			m, err := resolve(member)
-			if err != nil {
-				return "", err
-			}
-			return provider.WithMemberAccount(m, acct), nil
-		}
 		if member, fast := provider.MemberFast(id); fast {
 			// sent fast (Group.Fast): the member as any other, SaveGroup
 			// takes the :fast off
@@ -322,7 +283,7 @@ func memberResolver(keep []string) func(string) (string, error) {
 					return provider.GroupPrefix + g.ID, nil
 				}
 			}
-			return "", fmt.Errorf("magpie has no group %q (magpie groups lists them)", gid)
+			return "", fmt.Errorf(product.Text("magpie has no group %q (magpie groups lists them)"), gid)
 		}
 		if slices.Contains(ids, id) || slices.Contains(keep, id) {
 			return id, nil
@@ -348,7 +309,7 @@ func memberResolver(keep []string) func(string) (string, error) {
 		if near := closeMatches(id, ids, 6); len(near) > 0 {
 			msg += "; did you mean " + strings.Join(near, ", ") + "?"
 		}
-		return "", fmt.Errorf("%s (magpie models lists them)", msg)
+		return "", fmt.Errorf(product.Text("%s (magpie models lists them)"), msg)
 	}
 	return resolve
 }
@@ -438,7 +399,7 @@ func applyGroupPairs(g *provider.Group, pairs []string, resolve func(string) (st
 	for _, kv := range pairs {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok {
-			return fmt.Errorf("expected key=value, got %q (magpie group help)", kv)
+			return fmt.Errorf(product.Text("expected key=value, got %q (magpie group help)"), kv)
 		}
 		var err error
 		switch strings.ToLower(strings.TrimSpace(k)) {
@@ -453,7 +414,7 @@ func applyGroupPairs(g *provider.Group, pairs []string, resolve func(string) (st
 			// the whole list, patterns too: what the old ones matched goes
 			g.Members, err = members(v)
 			g.Match, g.Matched = patterns, nil
-			g.Fast, g.Ultra = nil, nil // the list as typed: :fast on those sent fast
+			g.Fast = nil // the list as typed: :fast on those sent fast
 		case "models+", "members+", "model+":
 			var add []string
 			if add, err = members(v); err == nil {
@@ -522,15 +483,6 @@ func applyGroupPairs(g *provider.Group, pairs []string, resolve func(string) (st
 			default:
 				g.Context, err = parseTokens(v)
 			}
-		case "compact", "compact-at":
-			// where Codex and Claude Code compact a conversation on the
-			// group; empty or 0 leaves it to its members' and Settings'
-			switch strings.ToLower(strings.TrimSpace(v)) {
-			case "", "default", "off":
-				g.Compact = 0
-			default:
-				g.Compact, err = parseTokens(v)
-			}
 		case "levels", "level":
 			// the reasoning levels agents are offered; empty is those every
 			// member has again
@@ -540,8 +492,6 @@ func applyGroupPairs(g *provider.Group, pairs []string, resolve func(string) (st
 			}
 		case "family", "tag":
 			g.Family = strings.TrimSpace(v)
-		case "note", "description", "desc", "remark":
-			g.Note = provider.CleanNote(v)
 		case "listed":
 			// no: the models in it leave the lists agents see (#1783)
 			switch strings.ToLower(strings.TrimSpace(v)) {
@@ -563,21 +513,6 @@ func applyGroupPairs(g *provider.Group, pairs []string, resolve func(string) (st
 			}
 		case "classifier", "classify":
 			g.Classifier = strings.TrimPrefix(strings.TrimSpace(v), "magpie/")
-		case "intent-sure", "intentsure":
-			// how sure the classifier must be of an intent for it to count
-			// (#5101): 0 takes its likeliest however unsure, "none of
-			// these" never counting; empty is 0.4 as groups have always
-			// asked
-			if strings.TrimSpace(v) == "" {
-				g.IntentSure = nil
-				break
-			}
-			sure, perr := strconv.ParseFloat(strings.TrimSpace(v), 64)
-			if perr != nil || !(sure >= 0 && sure <= 1) { // NaN too
-				err = fmt.Errorf("intent-sure is from 0 to 1, as intent-sure=0.25 (empty is the 0.4 groups have always asked), not %q", v)
-				break
-			}
-			g.IntentSure = &sure
 		case "fast":
 			// the members sent in their vendor's fast mode, as they are in
 			// the group
@@ -589,18 +524,6 @@ func applyGroupPairs(g *provider.Group, pairs []string, resolve func(string) (st
 					return perr
 				}
 				g.Fast = append(g.Fast, id)
-			}
-		case "ultra":
-			// the fast members sent in the faster mode: each named is fast
-			// too, the rest are not ultra
-			g.Ultra = nil
-			for _, m := range splitIDs(v, inGroup(g.Members)) {
-				m, _ = provider.MemberFast(m)
-				id, perr := pickMember(g.Members, m)
-				if perr != nil {
-					return perr
-				}
-				g.SetMemberTier(id, "ultrafast")
 			}
 		case "weight", "weights":
 			// each member's share when the group routes by weight (#1910):
@@ -633,7 +556,7 @@ func applyGroupPairs(g *provider.Group, pairs []string, resolve func(string) (st
 			g.Pick, err = pickMember(g.Members, v)
 			g.Routing = provider.Manual
 		default:
-			return fmt.Errorf("unknown field %q (fields: name, note, models, models+, models-, routing, pick, stays, context, levels, family, effort, classifier, intent-sure, fast, weight, listed; magpie group help)", k)
+			return fmt.Errorf(product.Text("unknown field %q (fields: name, models, models+, models-, routing, pick, stays, context, levels, family, effort, classifier, fast, weight, listed; magpie group help)"), k)
 		}
 		if err != nil {
 			return err
@@ -684,7 +607,7 @@ func findGroup(ref string) (provider.Group, error) {
 		}
 	}
 	if len(ids) == 0 {
-		return provider.Group{}, fmt.Errorf("no group %q; there are none yet (magpie group add <name> models=…)", ref)
+		return provider.Group{}, fmt.Errorf(product.Text("no group %q; there are none yet (magpie group add <name> models=…)"), ref)
 	}
 	return provider.Group{}, fmt.Errorf("no group %q (groups: %s)", ref, strings.Join(ids, ", "))
 }
@@ -719,7 +642,7 @@ func groupCmd(args []string) error {
 		return nil
 	case "add", "new":
 		if len(rest) == 0 || strings.Contains(rest[0], "=") {
-			return fmt.Errorf("magpie group add <name> models=<m1>[,m2…] [routing=…] [stays=…]\n\n%s", groupUsage)
+			return fmt.Errorf(product.Text("magpie group add <name> models=<m1>[,m2…] [routing=…] [stays=…]\n\n%s"), groupUsage)
 		}
 		verb := "added"
 		if slices.ContainsFunc(provider.Groups(), func(o provider.Group) bool {
@@ -735,7 +658,7 @@ func groupCmd(args []string) error {
 		return showGroup(g)
 	case "set", "edit":
 		if len(rest) < 2 {
-			return fmt.Errorf("magpie group set <id> k=v…\n\n%s", groupUsage)
+			return fmt.Errorf(product.Text("magpie group set <id> k=v…\n\n%s"), groupUsage)
 		}
 		g, err := setGroup(rest[0], rest[1:])
 		if err != nil {
@@ -749,7 +672,7 @@ func groupCmd(args []string) error {
 		return showGroup(g)
 	case "rm", "remove", "delete":
 		if len(rest) < 1 {
-			return fmt.Errorf("magpie group rm <id>…")
+			return fmt.Errorf("%s", product.Text("magpie group rm <id>…"))
 		}
 		gs, err := removeGroups(rest)
 		if err != nil {
@@ -765,7 +688,7 @@ func groupCmd(args []string) error {
 		return nil
 	case "pick", "use":
 		if len(rest) != 2 {
-			return fmt.Errorf("magpie group pick <id> <model>")
+			return fmt.Errorf("%s", product.Text("magpie group pick <id> <model>"))
 		}
 		g, err := setGroup(rest[0], []string{"pick=" + rest[1]})
 		if err != nil {
@@ -775,14 +698,14 @@ func groupCmd(args []string) error {
 		return showGroup(g)
 	case "copy", "duplicate", "dup", "clone":
 		if len(rest) < 1 {
-			return fmt.Errorf("magpie group copy <id> [name]")
+			return fmt.Errorf("%s", product.Text("magpie group copy <id> [name]"))
 		}
 		src, err := findGroup(rest[0])
 		if err != nil {
 			return err
 		}
 		if src.Hidden {
-			return fmt.Errorf("%s was removed: magpie group restore %s brings it back first", src.ID, src.ID)
+			return fmt.Errorf(product.Text("%s was removed: magpie group restore %s brings it back first"), src.ID, src.ID)
 		}
 		g, err := provider.CopyGroup(src.ID, strings.Join(rest[1:], " "))
 		if err != nil {
@@ -796,7 +719,7 @@ func groupCmd(args []string) error {
 		return ruleCmd(rest)
 	case "show":
 		if len(rest) != 1 {
-			return fmt.Errorf("magpie group show <id>")
+			return fmt.Errorf("%s", product.Text("magpie group show <id>"))
 		}
 		g, err := findGroup(rest[0])
 		if err != nil {
@@ -807,7 +730,7 @@ func groupCmd(args []string) error {
 		return autoGroupsCmd(rest)
 	case "restore", "unhide":
 		if len(rest) != 1 {
-			return fmt.Errorf("magpie group restore <id>")
+			return fmt.Errorf("%s", product.Text("magpie group restore <id>"))
 		}
 		g, err := restoreGroup(rest[0])
 		if err != nil {
@@ -821,7 +744,7 @@ func groupCmd(args []string) error {
 		return showGroup(g)
 	}
 	if len(rest) > 0 {
-		return fmt.Errorf("magpie group has no %q\n\n%s", verb, groupUsage)
+		return fmt.Errorf(product.Text("magpie group has no %q\n\n%s"), verb, groupUsage)
 	}
 	g, err := findGroup(verb)
 	if err != nil {
@@ -837,7 +760,7 @@ func addGroup(name string, pairs []string) (provider.Group, error) {
 	}
 	if g.ID = strings.ToLower(strings.TrimSpace(g.ID)); g.ID != "" {
 		if old, err := findGroup(g.ID); err == nil && old.ID == g.ID {
-			return g, fmt.Errorf("there is a group %s already: magpie group set %s k=v… changes it", g.ID, g.ID)
+			return g, fmt.Errorf(product.Text("there is a group %s already: magpie group set %s k=v… changes it"), g.ID, g.ID)
 		}
 	} else {
 		// a group is known by its name: adding one under a name taken
@@ -854,7 +777,7 @@ func addGroup(name string, pairs []string) (provider.Group, error) {
 		g.Name = g.ID
 	}
 	if len(g.Members) == 0 && len(g.Match) == 0 {
-		return g, fmt.Errorf("a group needs a model in it: models=<provider/model>[,…] (magpie models lists them), or a pattern: models='openrouter/*:free'")
+		return g, fmt.Errorf("%s", product.Text("a group needs a model in it: models=<provider/model>[,…] (magpie models lists them), or a pattern: models='openrouter/*:free'"))
 	}
 	if err := provider.SaveGroup(g); err != nil {
 		return g, err
@@ -868,14 +791,14 @@ func setGroup(ref string, pairs []string) (provider.Group, error) {
 		return g, err
 	}
 	if g.Hidden {
-		return g, fmt.Errorf("%s was removed: magpie group restore %s brings it back first", g.ID, g.ID)
+		return g, fmt.Errorf(product.Text("%s was removed: magpie group restore %s brings it back first"), g.ID, g.ID)
 	}
 	from := g.ID
 	if err := applyGroupPairs(&g, pairs, memberResolver(g.Members), true); err != nil {
 		return g, err
 	}
 	if len(g.Members) == 0 && len(g.Match) == 0 {
-		return g, fmt.Errorf("a group needs a model in it; magpie group rm %s removes it", from)
+		return g, fmt.Errorf(product.Text("a group needs a model in it; magpie group rm %s removes it"), from)
 	}
 	pruneRules(&g)
 	to := strings.ToLower(strings.TrimSpace(g.ID))
@@ -924,7 +847,7 @@ func removeGroups(refs []string) ([]provider.Group, error) {
 			return nil, err
 		}
 		if g.Hidden {
-			return nil, fmt.Errorf("%s is removed already; magpie group restore %s brings it back", g.ID, g.ID)
+			return nil, fmt.Errorf(product.Text("%s is removed already; magpie group restore %s brings it back"), g.ID, g.ID)
 		}
 		gs, ids = append(gs, g), append(ids, g.ID)
 	}
@@ -935,12 +858,12 @@ func removeGroup(ref string) (provider.Group, error) {
 	g, err := findGroup(ref)
 	if err != nil {
 		if id, ok := removedOnly(ref); ok {
-			return g, fmt.Errorf("%s is removed already (and no two providers serve its model now); magpie group restore %s brings it back", id, id)
+			return g, fmt.Errorf(product.Text("%s is removed already (and no two providers serve its model now); magpie group restore %s brings it back"), id, id)
 		}
 		return g, err
 	}
 	if g.Hidden {
-		return g, fmt.Errorf("%s is removed already; magpie group restore %s brings it back", g.ID, g.ID)
+		return g, fmt.Errorf(product.Text("%s is removed already; magpie group restore %s brings it back"), g.ID, g.ID)
 	}
 	return g, provider.DeleteGroup(g.ID)
 }
@@ -998,9 +921,6 @@ func memberLabel(id string, names map[string]provider.Entry) (string, bool) {
 		if n == "" {
 			n = e.Model
 		}
-		if _, acct := provider.MemberAccount(id); acct != "" {
-			n += " · on " + memberAccountName(e.Provider.ID, acct) + " alone"
-		}
 		if _, levels := provider.MemberLevels(effort); len(levels) > 0 {
 			n += " · " + strings.Join(levels, "/") + " reasoning, as the agent picks"
 		} else if effort != "" {
@@ -1011,21 +931,11 @@ func memberLabel(id string, names map[string]provider.Entry) (string, bool) {
 	return "", false
 }
 
-// memberAccountName is how the account or key acct of the provider pid a
-// member names is shown: by its id when magpie has no such now.
-func memberAccountName(pid, acct string) string {
-	if n, ok := provider.AccountNames()[pid+"/"+acct]; ok {
-		return strings.TrimPrefix(n, pid+"/")
-	}
-	return acct
-}
-
 // typedMember is the group's member as it is typed: with :fast after it
 // when the group sends it fast.
 func typedMember(g provider.Group, id string) string {
 	if g.IsFast(id) {
-		base, acct := provider.MemberAccount(id)
-		return provider.WithMemberAccount(base+":"+provider.FastWord, acct)
+		return id + ":" + provider.FastWord
 	}
 	return id
 }
@@ -1051,9 +961,6 @@ func autoGroupsCmd(args []string) error {
 		} else {
 			fmt.Println("found groups are", amber.Render("off"), muted.Render("· only the groups you made or changed; magpie group auto on brings the others back"))
 		}
-		if skip := provider.AutoGroupSkip(); len(skip) > 0 {
-			fmt.Println("left out:", strings.Join(skip, ", "), muted.Render("· magpie group auto skip none lets them back in"))
-		}
 		return nil
 	}
 	var on bool
@@ -1061,13 +968,11 @@ func autoGroupsCmd(args []string) error {
 	case "on", "true", "yes", "1":
 		on = true
 	case "off", "false", "no", "0":
-	case "skip":
-		return autoGroupSkipCmd(args[1:])
 	default:
-		return fmt.Errorf("magpie group auto [on|off|skip <provider>…|skip none]")
+		return fmt.Errorf("%s", product.Text("magpie group auto [on|off]"))
 	}
 	if len(args) > 1 {
-		return fmt.Errorf("magpie group auto [on|off]")
+		return fmt.Errorf("%s", product.Text("magpie group auto [on|off]"))
 	}
 	moved, err := agent.Reseat(func() error { return provider.SetAutoGroups(on) })
 	if err != nil {
@@ -1078,47 +983,6 @@ func autoGroupsCmd(args []string) error {
 		fmt.Println(green.Render("✓"), "found groups are on", muted.Render("· a model two or more providers serve is a group of them again"))
 	} else {
 		fmt.Println(green.Render("✓"), "found groups are off", muted.Render("· the groups you made or changed stay; a request for an auto- group goes to its model from one provider"))
-	}
-	return nil
-}
-
-// autoGroupSkipCmd keeps the providers named out of the groups magpie
-// finds, the others back in (provider.SetAutoGroupSkip; chenxiang0010 on
-// Discord); "none" lets every one back in, and no name says which are
-// out. A name magpie has no provider of is refused, never kept.
-func autoGroupSkipCmd(args []string) error {
-	if len(args) == 0 {
-		skip := provider.AutoGroupSkip()
-		if len(skip) == 0 {
-			fmt.Println("no provider is left out of found groups", muted.Render("· magpie group auto skip <provider>… leaves them out"))
-		} else {
-			fmt.Println("left out of found groups:", strings.Join(skip, ", "))
-		}
-		return nil
-	}
-	var ids []string
-	if !(len(args) == 1 && strings.EqualFold(args[0], "none")) {
-		have := map[string]bool{}
-		for _, p := range provider.All() {
-			have[p.ID] = true
-		}
-		for _, a := range args {
-			id := strings.ToLower(strings.TrimSpace(a))
-			if !have[id] {
-				return fmt.Errorf("no provider %q (magpie providers lists their ids)", a)
-			}
-			ids = append(ids, id)
-		}
-	}
-	moved, err := agent.Reseat(func() error { return provider.SetAutoGroupSkip(ids) })
-	if err != nil {
-		return err
-	}
-	defer printMoved(moved)
-	if len(ids) == 0 {
-		fmt.Println(green.Render("✓"), "no provider is left out of found groups")
-	} else {
-		fmt.Println(green.Render("✓"), "left out of found groups:", strings.Join(ids, ", "), muted.Render("· the groups you made or changed keep them"))
 	}
 	return nil
 }
@@ -1145,11 +1009,11 @@ func groups() error {
 			names[e.ID] = e // a group in a group is served when it is
 		}
 	}
-	type row struct{ name, id, how, members, uses, note string }
+	type row struct{ name, id, how, members, uses string }
 	var rows []row
 	w := [3]int{}
 	for _, g := range shown {
-		r := row{name: bold.Render(g.Name), id: muted.Render(g.Ref()), note: g.Note}
+		r := row{name: bold.Render(g.Name), id: muted.Render(g.Ref())}
 		if g.Auto {
 			r.name += " " + faint.Render("found")
 		}
@@ -1161,7 +1025,7 @@ func groups() error {
 			r.how += muted.Render(fmt.Sprintf(" · %d rule%s", n, map[bool]string{true: "", false: "s"}[n == 1]))
 		}
 		sep, ready := muted.Render(" · "), false
-		if g.Routing == provider.Ordered || g.Routing == provider.Drain {
+		if g.Routing == provider.Ordered {
 			sep = muted.Render(" → ")
 		}
 		var ms []string
@@ -1205,9 +1069,6 @@ func groups() error {
 	}
 	for _, r := range rows {
 		fmt.Printf("  %s  %s  %s  %s%s\n", pad(r.name, w[0]), pad(r.id, w[1]), pad(r.how, w[2]), r.members, r.uses)
-		if r.note != "" {
-			fmt.Printf("  %s\n", muted.Render(r.note)) // the user's own word on it, under its row
-		}
 	}
 	var ids []string
 	for _, g := range hidden {
@@ -1236,9 +1097,6 @@ func showGroup(g provider.Group) error {
 		head += amber.Render("  removed") + muted.Render(" · magpie group restore "+g.ID)
 	}
 	fmt.Println(" ", head)
-	if g.Note != "" {
-		kv("note", g.Note)
-	}
 	if g.Routing == provider.Manual {
 		kv("routing", "manual"+muted.Render("  every request to "+g.Picked()+"; magpie group pick "+g.ID+" <model> picks another"))
 	} else {
@@ -1259,9 +1117,7 @@ func showGroup(g provider.Group) error {
 			line = green.Render(fmt.Sprintf("%d %s ●", i+1, typedMember(g, id)))
 		}
 		if l, ok := memberLabel(id, names); ok {
-			if g.IsUltra(id) {
-				l += " · ultrafast"
-			} else if g.IsFast(id) {
+			if g.IsFast(id) {
 				l += " · fast"
 			}
 			if g.Routing == provider.Weighted {
@@ -1317,9 +1173,6 @@ func showGroup(g provider.Group) error {
 			what = "  rates how hard each turn is"
 		}
 		kv("classifier", g.Classifier+muted.Render(what))
-	}
-	if g.IntentSure != nil {
-		kv("intent-sure", fmt.Sprintf("%g", *g.IntentSure)+muted.Render("  how sure the classifier must be of an intent for it to count; 0 takes its likeliest"))
 	}
 	if u := groupUses()[g.ID]; len(u) > 0 {
 		kv("used by", green.Render(strings.Join(u, ", ")))

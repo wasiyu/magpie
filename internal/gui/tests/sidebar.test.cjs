@@ -11,7 +11,7 @@ const { chromium, webkit } = require("playwright");
 
 const assets = path.resolve(__dirname, "../assets");
 
-function serve(lang, reads, gateway = { url: "http://127.0.0.1:3425", running: true, window: true }) {
+function serve(lang, reads, gateway = { url: "http://127.0.0.1:3425", running: true, window: true }, holdProviders) {
   const state = { agents: [], profiles: [], settings: { lang, theme: "light" } };
   return async (route) => {
     const url = new URL(route.request().url());
@@ -19,7 +19,7 @@ function serve(lang, reads, gateway = { url: "http://127.0.0.1:3425", running: t
     if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:${JSON.stringify(lang)},theme:"light",web:false,sideGateway:{url:"http://127.0.0.1:3425",running:true,boot:true}};` });
     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
     if (url.pathname === "/api/state") return json(state);
-    if (url.pathname === "/api/providers") { reads.push(performance.now()); return json({ providers: [], presets: [], excluded: [], gateway }); }
+    if (url.pathname === "/api/providers") { reads.push(performance.now()); if (holdProviders) await holdProviders; return json({ providers: [], presets: [], excluded: [], gateway }); }
     if (url.pathname === "/api/groups") return json({ groups: [] });
     if (url.pathname.startsWith("/api/")) return json({});
     const file = path.join(assets, url.pathname === "/" ? "index.html" : url.pathname);
@@ -48,7 +48,6 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const context = await browser.newContext({ viewport: { width: 1024, height: 760 }, reducedMotion: "reduce" });
       const page = await context.newPage();
       page.setDefaultTimeout(5000);
-      page.setDefaultNavigationTimeout(60000);
       const errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
       await page.route("**/*", serve(lang, reads));
@@ -61,7 +60,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await page.locator(".top #nav").count(), 0, "and not in the header");
       assert.deepEqual(await page.locator("#nav .nav-gl:visible").allTextContents(), w.groups);
       assert.deepEqual(await page.locator("#nav button[data-view]").evaluateAll((bs) => bs.map((b) => b.dataset.view)),
-        ["agents", "sessions", "library", "providers", "routing", "groups", "gateway", "usage", "masking", "plugins"]);
+        ["quickstart", "agents", "sessions", "library", "providers", "routing", "gateway", "usage", "masking", "plugins"]);
       assert.ok(await page.locator("#side .side-foot #prefs").isVisible(), "Settings at the sidebar's foot");
       assert.equal((await page.locator("#prefs .side-l").textContent()).trim(), w.settings);
       // no page's name or group cut, and nothing scrolls sideways
@@ -70,6 +69,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), "the window does not scroll sideways");
 
       // the open page in the graphite of the text, not an accent colour
+      await page.waitForFunction(() => getComputedStyle(document.querySelector("#nav button.on .nav-ic")).color === getComputedStyle(document.body).color);
       const [ic, fg] = await page.evaluate(() => [getComputedStyle(document.querySelector("#nav button.on .nav-ic")).color, getComputedStyle(document.body).color]);
       assert.equal(ic, fg, "the open page's icon is the text's colour");
 
@@ -183,11 +183,17 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const context = await browser.newContext({ viewport: { width: 1200, height: 700 }, reducedMotion: "reduce" });
       const page = await context.newPage();
       page.setDefaultTimeout(5000);
-      page.setDefaultNavigationTimeout(60000);
-      await page.route("**/*", serve("en", reads, { url: "http://127.0.0.1:3490", running: false }));
+      let releaseProviders;
+      const holdProviders = new Promise((resolve) => { releaseProviders = resolve; });
+      await page.route("**/*", serve("en", reads, { url: "http://127.0.0.1:3490", running: false }, holdProviders));
       await page.goto("http://magpie.test/");
       await page.waitForSelector("#nav button.on");
       assert.match(await page.locator("#sideGw").textContent(), /127\.0\.0\.1:3425/, "boot.js's line first");
+      // Hold the fresh read while the sidebar requests its status, rather than
+      // racing the fresh result with an assertion about the previous value.
+      await page.waitForFunction(() => guideRead?.pending);
+      await page.evaluate(() => { sideGwRead.due = true; sideGwRead(); });
+      releaseProviders();
       await page.waitForFunction(() => document.querySelector("#sideGw span")?.textContent === "Gateway stopped");
       assert.ok(await page.locator("#sideGw").evaluate((b) => b.classList.contains("off")));
       assert.match(await page.locator("#sideGw").getAttribute("title"), /3490/);
@@ -201,23 +207,10 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.route("**/*", serve("en", []));
       await page.goto("http://magpie.test/");
       await page.waitForSelector("#nav button.on");
-      // the unroll is counted as its animations are made, ahead of the
-      // click (#2950): on a busy machine the whole play is over before
-      // the one sample after the click lands, and a finished animation
-      // is out of getAnimations(); an animation made is a fact that
-      // stays put, so the assert reads that, not the moment sampled
-      await page.evaluate(() => {
-        window.navAnims = [];
-        const animate = Element.prototype.animate;
-        Element.prototype.animate = function (frames, options) {
-          window.navAnims.push(this);
-          return animate.call(this, frames, options);
-        };
-      });
       await page.locator("#prefs").click();
       const box = page.locator("#side .nav-sub").first();
       await box.waitFor();
-      assert.ok(await box.evaluate((b) => window.navAnims.includes(b)), "the list unrolls");
+      assert.ok(await box.evaluate((b) => b.getAnimations().length > 0), "the list unrolls");
       await page.locator('#nav button[data-view="agents"]').click();
       // folding: out of reach at once, gone once it has played
       assert.equal(await page.locator(".nav-sub:not(.leaving)").count(), 0);

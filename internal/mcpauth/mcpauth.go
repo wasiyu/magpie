@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"html"
 	"io"
 	"io/fs"
@@ -892,8 +893,8 @@ func register(ctx context.Context, m meta, redirect string) (id, secret, method 
 		}
 	}
 	reg := map[string]any{
-		"client_name":                "Magpie",
-		"client_uri":                 "https://usemagpie.ai",
+		"client_name":                product.Text("Magpie"),
+		"client_uri":                 product.Website,
 		"redirect_uris":              []string{redirect},
 		"grant_types":                []string{"authorization_code", "refresh_token"},
 		"response_types":             []string{"code"},

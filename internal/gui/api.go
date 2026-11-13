@@ -50,6 +50,7 @@ import (
 	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/notices"
 	"github.com/yetone/magpie/internal/plugin"
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/profile"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/redact"
@@ -342,8 +343,8 @@ type stateJSON struct {
 	// the page to draw while the fresh one is read
 	Last bool `json:"last,omitempty"`
 	// Served is how many models magpie serves, groups left out: the Get
-	// started card's first step ("add a model source") is done once
-	// there is one, agents found or not
+	// started card's model-selection step is done once there is one,
+	// agents found or not.
 	Served int `json:"served"`
 	// GatewayOther is a magpie of another version serving the gateway in
 	// this one's place, which the Agents page says (gateway_older.go)
@@ -1200,6 +1201,13 @@ func versionedPage(page []byte) []byte {
 // gw is the gateway this process serves, or nil when another magpie has it
 // (for now: see startBackend).
 func Handler(w Windows, gw *gateway.Server) http.Handler {
+	if product.Jellytool {
+		return jellytoolHandler(w, gw)
+	}
+	return handler(w, gw)
+}
+
+func handler(w Windows, gw *gateway.Server) http.Handler {
 	if gw != nil {
 		served.Store(gw)
 	}
@@ -1292,6 +1300,9 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		// before the first paint rather than after the settings come
 		list := builtinsState()
 		boot["featuresOff"] = builtinsOff(list)
+		if product.Jellytool {
+			boot["jellytool"] = true
+		}
 		// and where the gateway listens, so the sidebar's line at its foot
 		// is drawn from the start, not held back until providers has come
 		// in (#1519's read waits for the agents); only this process's own,

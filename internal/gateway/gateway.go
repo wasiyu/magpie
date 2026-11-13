@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"io"
 	"log"
 	"net"
@@ -46,11 +47,11 @@ import (
 
 // DefaultAddr is where the gateway listens unless Settings' port or
 // MAGPIE_ADDR says otherwise.
-const DefaultAddr = "127.0.0.1:3425"
+const DefaultAddr = product.DefaultGatewayAddr
 
 // Token is the bearer token agents are told to use. The gateway only
 // listens on loopback and accepts anything, but agents insist on one.
-const Token = "magpie"
+const Token = product.ID
 
 // TokenFor is the token an agent that says nothing of itself in its
 // User-Agent is told to use, so the gateway still knows it: Alma's requests

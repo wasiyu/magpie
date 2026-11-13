@@ -7,6 +7,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"os"
 	"path/filepath"
 	"sort"
@@ -858,7 +859,7 @@ func (m model) View() string {
 }
 
 func (m model) header(crumbs ...string) string {
-	s := pad + sTitle.Render("◉ magpie")
+	s := pad + sTitle.Render("◉ "+product.Name)
 	if len(crumbs) == 0 {
 		// the pages, this one marked
 		s += "  "

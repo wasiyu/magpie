@@ -4,7 +4,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
-const assets = path.resolve(__dirname, "../assets");
+const assets = path.resolve(process.env.MAGPIE_UX_ASSETS || path.join(__dirname, "../assets"));
 
 function fixture(lang, posts) {
   let settings = { theme: "light", lang, tray: "panel", currency: "usd", textSize: 100,
@@ -237,11 +237,13 @@ for (const engine of process.env.BROWSER ? [process.env.BROWSER] : ["chromium", 
       await page.mouse.click(point.x + point.width / 2, point.y + point.height / 2);
       assert.equal(await page.locator("body").getAttribute("data-close-click"), "received", "the closing editor does not swallow the page's click");
       assert.equal(await page.locator("body").getAttribute("data-clicked-while-closing"), "true", "the click arrived before the close animation finished");
+      await nav.focus();
       await page.evaluate(() => {
         const modal = document.querySelector("#modal");
         for (const a of [...modal.getAnimations(), ...modal.firstElementChild.getAnimations()]) a.finish();
       });
       await page.locator("#modal").waitFor({ state: "hidden" });
+      assert.equal(await nav.evaluate((e) => document.activeElement === e), true, "finishing the close animation keeps focus the reader moved to the page");
       const row = page.locator('#providers .row.provider[data-id="relay"]');
       await row.click();
       const reopeningPoint = await row.boundingBox();

@@ -35,6 +35,7 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -85,7 +86,7 @@ func raycast(home string) *Agent {
 			},
 			Set: func(v string) error { return write(v != "") },
 			Options: func(map[string]string) []Option {
-				return []Option{{Value: magpieID, Label: "magpie", Icon: "magpie", Note: "every magpie model in Raycast AI's model picker (Raycast Pro)"}}
+				return []Option{{Value: magpieID, Label: product.Name, Icon: "magpie", Note: "every magpie model in Raycast AI's model picker (Raycast Pro)"}}
 			},
 		}},
 	}

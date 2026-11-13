@@ -26,9 +26,16 @@ var (
 // transparency), in c: each pixel keeps the glyph's alpha. trayIcon itself
 // when it can't be read, which is still a silhouette.
 func trayGlyph(c color.NRGBA) []byte {
-	src, err := png.Decode(bytes.NewReader(trayIcon))
+	return trayGlyphFrom(trayIcon, c)
+}
+
+// trayGlyphFrom applies one solid colour to an icon's alpha channel. It is
+// shared by the ordinary magpie and product-specific tray icons so every
+// Linux bar gets the same theme-aware treatment.
+func trayGlyphFrom(icon []byte, c color.NRGBA) []byte {
+	src, err := png.Decode(bytes.NewReader(icon))
 	if err != nil {
-		return trayIcon
+		return icon
 	}
 	b := src.Bounds()
 	out := image.NewNRGBA(b)
@@ -40,7 +47,7 @@ func trayGlyph(c color.NRGBA) []byte {
 	}
 	var buf bytes.Buffer
 	if png.Encode(&buf, out) != nil {
-		return trayIcon
+		return icon
 	}
 	return buf.Bytes()
 }

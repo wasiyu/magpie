@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"io"
 	"net/http"
 	"os"
@@ -37,7 +38,7 @@ func claudeCodeCmd(args []string) error {
 			case "--yes", "-y":
 				yes = true
 			default:
-				return fmt.Errorf("magpie claude-code install: unknown %q\n%s", a, claudeCodeUsage)
+				return fmt.Errorf(product.Text("magpie claude-code install: unknown %q\n%s"), a, claudeCodeUsage)
 			}
 		}
 		return installClaudeCode(yes)
@@ -58,7 +59,7 @@ func claudeCodeCmd(args []string) error {
 		fmt.Println(claudeCodeUsage)
 		return nil
 	}
-	return fmt.Errorf("magpie claude-code: unknown %q\n%s", args[0], claudeCodeUsage)
+	return fmt.Errorf(product.Text("magpie claude-code: unknown %q\n%s"), args[0], claudeCodeUsage)
 }
 
 // claudeCodeRuns: magpie claude-code runs [N|auto]. Each Claude
@@ -70,7 +71,7 @@ func claudeCodeRuns(args []string) error {
 	s := settings.Load()
 	switch {
 	case len(args) > 1:
-		return fmt.Errorf("magpie claude-code runs takes one value\n%s", claudeCodeUsage)
+		return fmt.Errorf(product.Text("magpie claude-code runs takes one value\n%s"), claudeCodeUsage)
 	case len(args) == 1 && (args[0] == "-h" || args[0] == "--help"):
 		fmt.Println(claudeCodeUsage)
 		return nil
@@ -79,7 +80,7 @@ func claudeCodeRuns(args []string) error {
 		if args[0] != "auto" {
 			v, err := strconv.Atoi(args[0])
 			if err != nil || v < 1 {
-				return fmt.Errorf("magpie claude-code runs takes a number from 1, or auto, not %q", args[0])
+				return fmt.Errorf(product.Text("magpie claude-code runs takes a number from 1, or auto, not %q"), args[0])
 			}
 			n = v
 		}
@@ -187,7 +188,7 @@ func fetchClaudeRuns(base string) (gateway.ClaudeRuns, error) {
 	c := &http.Client{Timeout: 10 * time.Second}
 	res, err := c.Get(base + gateway.ClaudeRunsPath)
 	if err != nil {
-		return out, fmt.Errorf("no magpie answers at %s, so none of its Claude Code is running", base)
+		return out, fmt.Errorf(product.Text("no magpie answers at %s, so none of its Claude Code is running"), base)
 	}
 	defer res.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(res.Body, 4<<20))
@@ -195,12 +196,12 @@ func fetchClaudeRuns(base string) (gateway.ClaudeRuns, error) {
 	case err != nil:
 		return out, fmt.Errorf("the list of Claude Code processes from %s was cut off: %v", base, err)
 	case res.StatusCode == http.StatusNotFound:
-		return out, fmt.Errorf("the magpie at %s is older than this one and doesn't list its Claude Code processes: update it", base)
+		return out, fmt.Errorf(product.Text("the magpie at %s is older than this one and doesn't list its Claude Code processes: update it"), base)
 	case res.StatusCode != http.StatusOK:
-		return out, fmt.Errorf("the magpie at %s answered %s: %s", base, res.Status, strings.TrimSpace(string(body)))
+		return out, fmt.Errorf(product.Text("the magpie at %s answered %s: %s"), base, res.Status, strings.TrimSpace(string(body)))
 	}
 	if json.Unmarshal(body, &out) != nil || out.Object != "claude-runs" {
-		return out, fmt.Errorf("what %s answered is not a list of Claude Code processes: is it magpie?", base)
+		return out, fmt.Errorf(product.Text("what %s answered is not a list of Claude Code processes: is it magpie?"), base)
 	}
 	return out, nil
 }

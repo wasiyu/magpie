@@ -35,6 +35,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"net"
 	"net/url"
 	"os"
@@ -198,7 +199,7 @@ func claudeDesktop(home string) *Agent {
 			},
 			Set: func(v string) error { return desktopApply(home, ps, v) },
 			Options: func(map[string]string) []Option {
-				return []Option{{Value: magpieID, Label: "magpie", Icon: "magpie",
+				return []Option{{Value: magpieID, Label: product.Name, Icon: "magpie",
 					Note: "Desktop's third-party gateway: Code and Cowork on magpie's models, no Anthropic sign-in (restart Desktop)"}}
 			},
 		}, desktopGatewayField(ps, func() error { return desktopApply(home, ps, magpieID) })}, append(desktopTierFields(home, ps), desktopSubagentField(ps), desktopSubagentEffortField(ps))...),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,7 +50,7 @@ func quotaRefreshCmd(args []string) error {
 	case 2:
 		id, user = names[0], names[1]
 	default:
-		return fmt.Errorf("usage: magpie quota refresh <provider> [<account>] [--json]")
+		return fmt.Errorf("%s", product.Text("usage: magpie quota refresh <provider> [<account>] [--json]"))
 	}
 	if p, err := provider.Find(id); err == nil && !provider.IsRemoteCard(id) {
 		id = p.ID
@@ -78,9 +79,9 @@ func quotaRefreshCmd(args []string) error {
 	}
 	if len(qs) == 0 {
 		if user != "" {
-			return fmt.Errorf("no card of %s · %s · magpie quota %s lists its accounts", id, user, id)
+			return fmt.Errorf(product.Text("no card of %s · %s · magpie quota %s lists its accounts"), id, user, id)
 		}
-		return fmt.Errorf("no subscription, plan or key balance of %s · magpie quota lists them", id)
+		return fmt.Errorf(product.Text("no subscription, plan or key balance of %s · magpie quota lists them"), id)
 	}
 	if asJSON {
 		b, _ := json.MarshalIndent(qs, "", "  ")

@@ -50,6 +50,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -127,7 +128,7 @@ func openPencil(home, cfg string) *Agent {
 				return write(v != "")
 			},
 			Options: func(map[string]string) []Option {
-				return []Option{{Value: magpieID, Label: "magpie", Icon: "magpie", Note: "every magpie model in OpenPencil's chat model picker"}}
+				return []Option{{Value: magpieID, Label: product.Name, Icon: "magpie", Note: "every magpie model in OpenPencil's chat model picker"}}
 			},
 		}},
 	}, path)

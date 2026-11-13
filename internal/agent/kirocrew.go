@@ -48,6 +48,7 @@ package agent
 import (
 	"encoding/json"
 	"errors"
+	"github.com/yetone/magpie/internal/product"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -587,7 +588,7 @@ func kiroCrew(home string) *Agent {
 				if pinned() && on() == "" {
 					note = kiroCrewPinnedNote
 				}
-				return []Option{{Value: magpieID, Label: "magpie", Icon: "magpie", Note: note}}
+				return []Option{{Value: magpieID, Label: product.Name, Icon: "magpie", Note: note}}
 			},
 		}, {
 			Key: "harness", Label: "harness", Quiet: true,

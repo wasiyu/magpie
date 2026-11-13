@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"net"
 	"net/url"
 	"os"
@@ -46,7 +47,7 @@ func webCmd(args []string) error {
 		case a == "--gateway":
 			gui.WebGateway.Store(true)
 		default:
-			return fmt.Errorf("magpie web: unknown %q · magpie web [--addr host:port] [--lan] [--no-open] [--gateway] [--tls-cert <file> --tls-key <file>], MAGPIE_WEB_KEY to keep one key", a)
+			return fmt.Errorf(product.Text("magpie web: unknown %q · magpie web [--addr host:port] [--lan] [--no-open] [--gateway] [--tls-cert <file> --tls-key <file>], MAGPIE_WEB_KEY to keep one key"), a)
 		}
 	}
 	if lan && addr == webAddr {
@@ -230,10 +231,10 @@ func serveCmd(args []string) error {
 		case strings.HasPrefix(a, "--web="):
 			web = strings.TrimPrefix(a, "--web=")
 			if _, _, err := net.SplitHostPort(web); err != nil {
-				return fmt.Errorf("magpie serve: --web=%s isn't host:port", web)
+				return fmt.Errorf(product.Text("magpie serve: --web=%s isn't host:port"), web)
 			}
 		default:
-			return fmt.Errorf("magpie serve: unknown %q · magpie serve [--web[=host:port]] [--tls-cert <file> --tls-key <file>]", a)
+			return fmt.Errorf(product.Text("magpie serve: unknown %q · magpie serve [--web[=host:port]] [--tls-cert <file> --tls-key <file>]"), a)
 		}
 	}
 	proc.UserPath() // as magpie web's (#3803)

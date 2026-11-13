@@ -14,6 +14,7 @@ import (
 
 	"github.com/yetone/magpie/internal/davsync"
 	"github.com/yetone/magpie/internal/gateway"
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/settings"
 )
 
@@ -86,11 +87,11 @@ func TestArchivePreviewAndDownload(t *testing.T) {
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/archive/file"+archiveQuery, nil))
 	if rec.Code != 200 || !bytes.Equal(rec.Body.Bytes(), obj) ||
-		rec.Header().Get("Content-Disposition") != `attachment; filename="magpie-request-2026-10-02-101010-00000000000000aa.json"` {
+		rec.Header().Get("Content-Disposition") != `attachment; filename="`+product.ID+`-request-2026-10-02-101010-00000000000000aa.json"` {
 		t.Fatalf("download %d %q, %d of %d bytes", rec.Code, rec.Header().Get("Content-Disposition"), rec.Body.Len(), len(obj))
 	}
 
-	for _, want := range []string{"magpie-request-2026-10-02-101010-00000000000000aa.json", "magpie-request-2026-10-02-101010-00000000000000aa-2.json"} {
+	for _, want := range []string{product.ID + "-request-2026-10-02-101010-00000000000000aa.json", product.ID + "-request-2026-10-02-101010-00000000000000aa-2.json"} {
 		rec = httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/archive/export"+archiveQuery, strings.NewReader("{}")))
 		var out struct{ Path string }

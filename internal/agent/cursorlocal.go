@@ -23,6 +23,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"github.com/yetone/magpie/internal/product"
 	"log"
 	"os"
 	"path/filepath"
@@ -302,7 +303,7 @@ func cursorLocal() *Agent {
 			},
 			Set: func(v string) error { return cursorLocalOn(v != "") },
 			Options: func(map[string]string) []Option {
-				return []Option{{Value: magpieID, Label: "magpie", Icon: "magpie",
+				return []Option{{Value: magpieID, Label: product.Name, Icon: "magpie",
 					Note: "CURSOR_LOCAL_AGENT_BASE_URL and _API_KEY set for your user, which only this build reads (quit it and open it again)"}}
 			},
 		}, {

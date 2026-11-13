@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"net"
 	"os"
 	"strconv"
@@ -65,24 +66,24 @@ func parseDaemon(args []string) (cmd string, w daemonWeb, err error) {
 		case strings.HasPrefix(a, "--addr="):
 			w.addr = strings.TrimPrefix(a, "--addr=")
 		default:
-			return "", w, fmt.Errorf("magpie daemon %s: unknown %q · %s", cmd, a, daemonUsage)
+			return "", w, fmt.Errorf(product.Text("magpie daemon %s: unknown %q · %s"), cmd, a, daemonUsage)
 		}
 	}
 	if w.addr != "" {
 		if _, _, err := net.SplitHostPort(w.addr); err != nil {
-			return "", w, fmt.Errorf("magpie daemon %s: --addr %s isn't host:port", cmd, w.addr)
+			return "", w, fmt.Errorf(product.Text("magpie daemon %s: --addr %s isn't host:port"), cmd, w.addr)
 		}
 	}
 	// --lan and --addr say where the page is: it is served
 	if lan || w.addr != "" {
 		if cmd == "web" && w.set && !w.on || off {
-			return "", w, fmt.Errorf("magpie daemon %s: --lan and --addr are for a page that is served", cmd)
+			return "", w, fmt.Errorf(product.Text("magpie daemon %s: --lan and --addr are for a page that is served"), cmd)
 		}
 		w.set, w.on = true, true
 	}
 	if off {
 		if w.on {
-			return "", w, errors.New("magpie daemon install: --web and --no-web both")
+			return "", w, errors.New(product.Text("magpie daemon install: --web and --no-web both"))
 		}
 		w.set = true
 	}
@@ -141,8 +142,8 @@ func daemonCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if c, _ := gateway.TLSFiles(); noTLS && c != "" {
-			return errors.New("magpie daemon install: --no-tls and a certificate both")
+		if noTLS && gateway.TLSOn() {
+			return errors.New(product.Text("magpie daemon install: --no-tls and a certificate both"))
 		}
 		args = append([]string{"install"}, rest...)
 	}
@@ -213,8 +214,8 @@ func daemonCmd(args []string) error {
 	}
 	deadline := time.Now().Add(daemonWait)
 	for {
-		if o := gateway.ServedAt(gateway.ClientURL()); o.Running {
-			fmt.Println(green.Render("●"), "the gateway answers on", bold.Render(gateway.ClientURL()))
+		if o := gateway.ServedBy(); o.Running {
+			fmt.Println(green.Render("●"), "the gateway answers on", bold.Render(gateway.URL()))
 			return nil
 		}
 		if !time.Now().Before(deadline) {
@@ -222,7 +223,7 @@ func daemonCmd(args []string) error {
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	fmt.Println(amber.Render("!"), "the gateway doesn't answer on", gateway.ClientURL(), "yet ·", st.Logs)
+	fmt.Println(amber.Render("!"), "the gateway doesn't answer on", gateway.URL(), "yet ·", st.Logs)
 	return nil
 }
 
@@ -294,12 +295,11 @@ func daemonStatus() error {
 	if err != nil {
 		return err
 	}
-	base := gateway.ClientURL()
-	served := gateway.ServedAt(base)
+	served := gateway.ServedBy()
 	if !st.Installed {
 		fmt.Println("the magpie service isn't installed ·", muted.Render("magpie daemon install"))
 		if served.Running {
-			fmt.Println(muted.Render("  another magpie (the app, magpie serve) answers on"), base)
+			fmt.Println(muted.Render("  another magpie (the app, magpie serve) answers on"), gateway.URL())
 		}
 		return nil
 	}
@@ -329,9 +329,9 @@ func daemonStatus() error {
 		printDaemonWeb(a, k)
 	}
 	if served.Running {
-		fmt.Println(muted.Render("  gateway"), "answers on", base, muted.Render(served.Version))
+		fmt.Println(muted.Render("  gateway"), "answers on", gateway.URL(), muted.Render(served.Version))
 	} else {
-		fmt.Println(muted.Render("  gateway"), "doesn't answer on", base)
+		fmt.Println(muted.Render("  gateway"), "doesn't answer on", gateway.URL())
 	}
 	for _, a := range st.Advice {
 		fmt.Println(amber.Render("!"), a)

@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"errors"
+	"github.com/yetone/magpie/internal/product"
 	"io/fs"
 	"net"
 	"net/url"
@@ -121,7 +122,7 @@ func zcode(home string) *Agent {
 				return edit.SetJSON(path, edit.KV{Path: key, Value: zcodeProviderJSON(path, false)})
 			},
 			Options: func(map[string]string) []Option {
-				return []Option{{Value: magpieID, Label: "magpie", Icon: "magpie", Note: "every magpie model in ZCode's picker"}}
+				return []Option{{Value: magpieID, Label: product.Name, Icon: "magpie", Note: "every magpie model in ZCode's picker"}}
 			},
 		}},
 	}
@@ -317,6 +318,7 @@ var zcodeKinds = map[string]string{
 // one of them in ZCode (provider_config.json from 3.14 on, config.json
 // before): the one written last has their choice, which is carried to the
 // other.
+// Jellytool's new provider defaults to Responses for an all-Responses catalog.
 func zcodeFormat(dir string) string {
 	rules, kind := zcodeRuleFormat(dir), ""
 	path := filepath.Join(dir, "config.json")
@@ -329,6 +331,9 @@ func zcodeFormat(dir string) string {
 	}
 	switch {
 	case kind == "" && rules == "":
+		if product.Jellytool && modelsOnResponses(magpieModels("zcode")) {
+			return "openai-responses"
+		}
 		return "anthropic-messages"
 	case kind == "":
 		return rules

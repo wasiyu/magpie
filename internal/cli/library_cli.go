@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"io"
 	"os"
 	"path/filepath"
@@ -251,7 +252,7 @@ func libraryCmd(args []string) error {
 			if res, err = library.UpdateSkill(rest[1], len(rest) == 3); err == nil {
 				fmt.Println(green.Render("✓"), rest[1], "is up to date")
 			} else if errors.As(err, &edited) {
-				err = fmt.Errorf("%w\n  magpie library skill update %s --replace-edits  takes the fetched one in its place, keeping yours with the backups", err, rest[1])
+				err = fmt.Errorf(product.Text("%w\n  magpie library skill update %s --replace-edits  takes the fetched one in its place, keeping yours with the backups"), err, rest[1])
 			} else if errors.As(err, &gone) {
 				// removed there: said, with how to take it out; it's kept till then
 				fmt.Println(amber.Render("!"), err)

@@ -4,6 +4,8 @@ package main
 
 import (
 	_ "embed"
+	"github.com/yetone/magpie/internal/product"
+	"strings"
 
 	"github.com/yetone/magpie/internal/cli"
 	"github.com/yetone/magpie/internal/notices"
@@ -23,6 +25,10 @@ var version = "dev"
 var thirdParty string
 
 func main() {
-	notices.Text = thirdParty
+	intro, tail, found := strings.Cut(thirdParty, "\n----------------")
+	notices.Text = product.Text(intro)
+	if found {
+		notices.Text += "\n----------------" + tail
+	}
 	cli.Main(version)
 }

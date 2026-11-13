@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -208,12 +209,12 @@ func syncCmd(k syncKind, args []string) error {
 		return syncNow(k)
 	case "auto":
 		if len(args) != 2 {
-			return fmt.Errorf("magpie %s auto off|3|15|30|60", k.cmd)
+			return fmt.Errorf(product.Text("magpie %s auto off|3|15|30|60"), k.cmd)
 		}
 		m := davsync.Manual
 		if args[1] != "off" {
 			if _, err := fmt.Sscan(args[1], &m); err != nil {
-				return fmt.Errorf("magpie %s auto off|3|15|30|60, not %q", k.cmd, args[1])
+				return fmt.Errorf(product.Text("magpie %s auto off|3|15|30|60, not %q"), k.cmd, args[1])
 			}
 		}
 		if err := davsync.SetAuto(m); err != nil {
@@ -298,7 +299,7 @@ func syncCmd(k syncKind, args []string) error {
 	case "off":
 		// the other's is turned off by its own command, not by a slip
 		if c, ok := davsync.Load(); ok && c.Kind() != k.name {
-			return fmt.Errorf("%s sync is on, not %s: magpie %s off turns it off", c.Kind(), k.name, strings.ToLower(c.Kind()))
+			return fmt.Errorf(product.Text("%s sync is on, not %s: magpie %s off turns it off"), c.Kind(), k.name, strings.ToLower(c.Kind()))
 		}
 		if err := davsync.Off(); err != nil {
 			return err
@@ -326,7 +327,7 @@ func syncSet(k syncKind, args []string, on bool) error {
 	c, was := davsync.Load()
 	if was && c.Kind() != k.name {
 		if !on {
-			return fmt.Errorf("%s sync is on, not %s: magpie %s set changes it; %s", c.Kind(), k.name, strings.ToLower(c.Kind()), k.turnOn())
+			return fmt.Errorf(product.Text("%s sync is on, not %s: magpie %s set changes it; %s"), c.Kind(), k.name, strings.ToLower(c.Kind()), k.turnOn())
 		}
 		next := davsync.Config{Passphrase: c.Passphrase, Keys: c.Keys, Agents: c.Agents, Library: c.Library, Memory: c.Memory, Usage: c.Usage, SignIns: c.SignIns, SignInsExcept: c.SignInsExcept,
 			Providers: c.Providers, Settings: c.Settings, Profiles: c.Profiles}
@@ -453,9 +454,9 @@ func syncSet(k syncKind, args []string, on bool) error {
 			return fmt.Errorf("%q is not a GitHub address (github://owner/repo or github://owner/repo/folder)", c.URL)
 		}
 		if c.GitHub() {
-			return fmt.Errorf("%q is not a WebDAV address (https://...): magpie github on %s for a GitHub repository", c.URL, c.URL)
+			return fmt.Errorf(product.Text("%q is not a WebDAV address (https://...): magpie github on %s for a GitHub repository"), c.URL, c.URL)
 		}
-		return fmt.Errorf("%q is not a WebDAV address (https://…): magpie s3 on %s for an S3 bucket", c.URL, c.URL)
+		return fmt.Errorf(product.Text("%q is not a WebDAV address (https://…): magpie s3 on %s for an S3 bucket"), c.URL, c.URL)
 	}
 	if err := davsync.Check(c); err != nil {
 		return err

@@ -255,6 +255,19 @@ func (s *stampedRefs) get(v string, build func() bool) bool {
 	return ok
 }
 
+// modelsOnResponses checks a provider-wide protocol choice. An empty list is unknown.
+func modelsOnResponses(models []catalog.Model) bool {
+	if len(models) == 0 {
+		return false
+	}
+	for _, m := range models {
+		if !slices.Contains(m.APIs, string(provider.Responses)) {
+			return false
+		}
+	}
+	return true
+}
+
 func firstOf(xs []string) string {
 	if len(xs) > 0 {
 		return xs[0]
