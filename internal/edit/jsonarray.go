@@ -42,7 +42,7 @@ func SetJSONItem(path string, where map[string]string, value any) error {
 		return WriteAtomic(path, []byte("[\n\t"+string(v)+"\n]\n"))
 	}
 	write := func(out []byte) error {
-		out, err := checkJSONC(out, raw)
+		out, err := checkJSONC(out)
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
@@ -92,7 +92,6 @@ func DelJSONItem(path string, where map[string]string) error {
 	if err != nil || len(bytes.TrimSpace(raw)) == 0 {
 		return err
 	}
-	orig := raw
 	changed := false
 	for {
 		stripped := jsonc.ToJSONInPlace(append([]byte(nil), raw...))
@@ -108,7 +107,7 @@ func DelJSONItem(path string, where map[string]string) error {
 	if !changed {
 		return nil
 	}
-	out, err := checkJSONC(raw, orig)
+	out, err := checkJSONC(raw)
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}

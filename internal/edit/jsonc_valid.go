@@ -134,10 +134,10 @@ func dropLoneCommas(raw []byte) []byte {
 	return out
 }
 
-// checkJSONC is out, an edit of orig, or an error when the edit would
-// leave a file the app reads as invalid that it read before.
-func checkJSONC(out, orig []byte) ([]byte, error) {
-	if !ValidJSONC(out) && ValidJSONC(orig) {
+// checkJSONC refuses invalid output, including an unchanged preview of
+// a file that was already invalid.
+func checkJSONC(out []byte) ([]byte, error) {
+	if !ValidJSONC(out) {
 		return nil, errEditInvalid
 	}
 	return out, nil

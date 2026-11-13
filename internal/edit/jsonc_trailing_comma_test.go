@@ -162,10 +162,10 @@ func TestValidJSONC(t *testing.T) {
 // An edit that would turn a file the app reads into one it can't is
 // refused, and nothing is written.
 func TestInvalidEditNotWritten(t *testing.T) {
-	if _, err := checkJSONC([]byte("{,}"), []byte("{}")); !errors.Is(err, errEditInvalid) {
-		t.Errorf("checkJSONC on {,} from {}: %v", err)
+	if _, err := checkJSONC([]byte("{,}")); !errors.Is(err, errEditInvalid) {
+		t.Errorf("checkJSONC on {,}: %v", err)
 	}
-	if out, err := checkJSONC([]byte(`{"a":1,}`), []byte("{}")); err != nil || string(out) != `{"a":1,}` {
+	if out, err := checkJSONC([]byte(`{"a":1,}`)); err != nil || string(out) != `{"a":1,}` {
 		t.Errorf("a trailing comma after a value is not refused: %v", err)
 	}
 }

@@ -11,6 +11,8 @@ func TestJSONEditsPreserveInvalidFiles(t *testing.T) {
 		`{"model":"old", "keep":`,
 		`{"model":"old" "keep":true}`,
 		`{"model":"old"} {"keep":true}`,
+		`{"model":"old","keep":true} /* unfinished`,
+		`{"mcpServers":{"magpie-image":{"command":"jellytool","args":["mcp","image"]} "lighthouse-ops":{"url":"https://example.com/mcp"}}}`,
 	} {
 		for name, edit := range map[string]func(string) error{
 			"set":           func(p string) error { return SetJSON(p, KV{"model", "new"}) },
@@ -31,8 +33,9 @@ func TestJSONEditsPreserveInvalidFiles(t *testing.T) {
 			set []KV
 			del []string
 		}{
-			"set":    {set: []KV{{"model", "new"}}},
-			"delete": {del: []string{"model"}},
+			"set":       {set: []KV{{"model", "new"}}},
+			"delete":    {del: []string{"model"}},
+			"unchanged": {},
 		} {
 			t.Run("preview/"+name+"/"+input, func(t *testing.T) {
 				raw := []byte(input)
@@ -53,6 +56,7 @@ func TestJSONItemEditsPreserveInvalidFiles(t *testing.T) {
 		`[{"name":"magpie"}, {"name":]`,
 		`[{"name":"magpie"} {"name":"keep"}]`,
 		`[{"name":"magpie"}] [{"name":"keep"}]`,
+		`[{"name":"magpie"},{"name":"keep"}] /* unfinished`,
 	} {
 		for name, edit := range map[string]func(string) error{
 			"set": func(p string) error {
