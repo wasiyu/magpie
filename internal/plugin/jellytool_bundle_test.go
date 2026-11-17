@@ -178,7 +178,6 @@ func TestJellytoolBundleContract(t *testing.T) {
 		{200, `not-json ` + key},
 		{200, `{"data":[]}`},
 		{200, `{"data":[{"id":"odd","type":"AUDIO"}]}`},
-		{200, `{"data":[{"id":"same","type":"TEXT"},{"id":"same","type":"TEXT"}]}`},
 		{200, strings.Repeat("x", 8*1024*1024+1)},
 		{302, "redirect " + key},
 		{403, key},
@@ -190,6 +189,17 @@ func TestJellytoolBundleContract(t *testing.T) {
 		pp := providers()
 		if !pp.FellBack || pp.ListError == "" || strings.Contains(pp.ListError, key) || len(pp.Models) != 0 {
 			t.Fatalf("failure was treated as an authorized catalog or leaked a key: %+v", pp)
+		}
+	}
+	for _, catalog := range []struct{ body, id string }{
+		{`{"data":[{"id":"same","type":"TEXT"},{"id":"same","type":"TEXT"}]}`, "same"},
+		{`{"data":[null,{}, {"id":"good","type":"AUDIO"},{"id":"good","type":"TEXT"},{"id":"bad","type":"AUDIO"},{"id":"good","type":"TEXT"}]}`, "good"},
+	} {
+		mu.Lock()
+		status, reply = 200, catalog.body
+		mu.Unlock()
+		if pp := providers(); pp.FellBack || len(pp.Models) != 1 || pp.Models[0].ID != catalog.id {
+			t.Fatalf("valid models were discarded with malformed or duplicate entries: %+v", pp)
 		}
 	}
 	mu.Lock()
@@ -215,6 +225,28 @@ func TestJellytoolBundleContract(t *testing.T) {
 	defer mu.Unlock()
 	if slices.ContainsFunc(seen, func(r request) bool { return r.path == "/redirect-must-not-be-followed" }) {
 		t.Fatal("followed an upstream redirect with credentials")
+	}
+}
+
+func TestJellytoolBundleTargetLock(t *testing.T) {
+	bun := filepath.Join(t.TempDir(), "bun.exe")
+	if err := os.WriteFile(bun, []byte("target-bun"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	resources := t.TempDir()
+	if err := PackJellytoolPluginsFor(context.Background(), bun, resources, "windows", "amd64"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(resources, "bun.exe")); err != nil {
+		t.Fatal(err)
+	}
+	var lock jellytoolRuntimeLock
+	b, err := os.ReadFile(filepath.Join(resources, "runtime-lock.json"))
+	if err != nil || json.Unmarshal(b, &lock) != nil {
+		t.Fatalf("runtime lock: %v", err)
+	}
+	if lock.OS != "windows" || lock.Arch != "amd64" || lock.Version != BunVersion {
+		t.Fatalf("runtime lock = %+v", lock)
 	}
 }
 

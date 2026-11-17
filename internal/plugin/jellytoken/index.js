@@ -113,7 +113,7 @@ async function mediaFetch(c, key, rest, init) {
   return Response.json({ model: body.model, data: images })
 }
 
-async function catalog(base, key, api = "responses") {
+async function catalog(base, key, api = "responses", warnings = []) {
   const request = (headers) => fetch(base + "/models", {
     headers, redirect: "manual", signal: AbortSignal.timeout(15000),
   })
@@ -150,12 +150,14 @@ async function catalog(base, key, api = "responses") {
   if (!body || typeof body !== "object" || businessFailure(body)) throw new Error("Jellytoken model list: business error")
   if (!Array.isArray(body.data) || body.data.length === 0) throw new Error("Jellytoken returned no models")
   const models = {}
+  let skipped = 0
   for (const row of body.data) {
     const kind = typeof row?.type === "string" ? row.type.toUpperCase() : ""
     if (typeof row?.id !== "string" || !row.id.trim() || !["TEXT", "IMAGE", "VIDEO"].includes(kind)) {
-      throw new Error("Jellytoken returned an unsupported model entry")
+      skipped++
+      continue
     }
-    if (Object.hasOwn(models, row.id)) throw new Error("Jellytoken returned a duplicate model ID")
+    if (Object.hasOwn(models, row.id)) { skipped++; continue }
     // Type describes output, not protocol, vision input, tools or pricing.
     Object.defineProperty(models, row.id, { enumerable: true, value: {
       id: row.id, name: row.id, providerID: ID,
@@ -165,6 +167,8 @@ async function catalog(base, key, api = "responses") {
       limit: { context: 0, output: 0 },
     } })
   }
+  if (Object.keys(models).length === 0) throw new Error("Jellytoken returned no supported models")
+  if (skipped) warnings.push("Some unsupported or duplicate model entries were skipped. You can continue with the available models.")
   return models
 }
 
@@ -235,10 +239,11 @@ export default {
       if (request.action === "config") return { baseURL, api, signedIn: !!current?.key }
       const key = credential(request.key?.trim() ? { type: "api", key: request.key } : current)
       if (request.action === "save") {
-        const models = await catalog(c.catalog, key, api)
+        const warnings = []
+        const models = await catalog(c.catalog, key, api, warnings)
         // Returned only to host.js, which commits this single record after
         // validation and strips it before replying to the GUI.
-        return { baseURL, api, first: !current?.key, count: Object.keys(models).length, auth: { type: "api", key, metadata: { ...current?.metadata, connection: { baseURL, api } } } }
+        return { baseURL, api, warnings, first: !current?.key, count: Object.keys(models).length, auth: { type: "api", key, metadata: { ...current?.metadata, connection: { baseURL, api } } } }
       }
       if (request.action !== "detect") throw new Error("Unsupported Jellytoken operation")
       const deadline = Date.now() + 40000

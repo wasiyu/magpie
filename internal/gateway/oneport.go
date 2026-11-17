@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"path"
 	"strings"
+
+	"github.com/yetone/magpie/internal/product"
 )
 
 // Front is what the gateway's own listener serves: Handler behind
@@ -15,8 +17,17 @@ import (
 func (s *Server) Front() http.Handler {
 	// the goroutine dump ahead of lanGuard too, whose allow list reads
 	// settings.json under its lock (dumpFirst)
-	// (socketEntry: a socket's turns go through all of it again)
-	s.frontOnce.Do(func() { s.front = socketEntry(s.dumpFirst(lanGuard(s.Handler()))) })
+	s.frontOnce.Do(func() {
+		handler := s.Handler()
+		if product.Jellytool {
+			// Jellytool uses this shared backend, not the legacy JellytoolFront.
+			next := handler
+			handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				writeWorkBuddyResponsesThrough(w, r, next)
+			})
+		}
+		s.front = s.dumpFirst(lanGuard(handler))
+	})
 	return s.front
 }
 
@@ -26,18 +37,8 @@ func (s *Server) Front() http.Handler {
 var clientPrefixes = []string{
 	"/v1", "/v1beta",
 	"/models", "/chat/completions", "/responses", "/messages",
-	"/images", "/embeddings", "/rerank", "/decisions", "/audio", "/videos", "/realtime",
+	"/images", "/embeddings", "/rerank", "/audio", "/videos",
 	"/muse-code/models", CodexPath, AlphaSearchPath, "/mcp",
-	// the key page (KeyPagePath): a key's holder opens it at the address
-	// they give their agents
-	KeyPagePath,
-	// DeepSeek's chat page (ChatPagePath), at the same address
-	ChatPagePath,
-	// and the join page (JoinPagePath), at the same address
-	JoinPagePath,
-	// and magpie's CA (CAPath), which the other computer fetches from the
-	// address it gives its agents
-	CAPath,
 }
 
 // ClientPath: p is one of the gateway's client routes, which `magpie web`

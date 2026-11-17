@@ -21,6 +21,19 @@ spec.loader.exec_module(launcher)
 
 
 class LockTests(unittest.TestCase):
+    def test_unregister_accepts_only_an_already_absent_registration(self):
+        for status, message, succeeds in [
+            (0, "", True),
+            (1, "failed to scan /build.noindex/Jellytool.app: -10814\n from spotlight\n", True),
+            (1, "failed to scan /build.noindex/Jellytool.app: -54\n", False),
+        ]:
+            with self.subTest(message=message), patch.object(launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], status, "", message)):
+                if succeeds:
+                    launcher.unregister(Path("/build.noindex/Jellytool.app"))
+                else:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        launcher.unregister(Path("/build.noindex/Jellytool.app"))
+
     def test_unreadable_lock_is_an_error(self):
         with patch.object(Path, "open", side_effect=PermissionError("denied")):
             with self.assertRaises(SystemExit):
@@ -73,7 +86,7 @@ class LockTests(unittest.TestCase):
 class NativeLaunchTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.compiler_dir = tempfile.TemporaryDirectory(prefix="jellytool-launch-compiler-")
+        cls.compiler_dir = tempfile.TemporaryDirectory(prefix="jellytool-launch-compiler-", suffix=".noindex")
         cls.addClassCleanup(cls.compiler_dir.cleanup)
         source = Path(cls.compiler_dir.name) / "app.m"
         cls.native = source.with_suffix("")
@@ -105,11 +118,12 @@ int main() {
         subprocess.run(["/usr/bin/clang", "-w", "-framework", "Cocoa", str(source), "-o", str(cls.native)], check=True, capture_output=True)
 
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="jellytool-launch-test-")
+        self.temp = tempfile.TemporaryDirectory(prefix="jellytool-launch-test-", suffix=".noindex")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
         self.ident = "com.jellytool.launch-test." + uuid.uuid4().hex
         self.ids = {self.ident}
+        self.apps = []
         self.lock = self.root / "instance.lock"
         self.env = dict(os.environ, HOME=str(self.root / "home"), XDG_CONFIG_HOME=str(self.root / "config"), XDG_CACHE_HOME=str(self.root / "cache"))
         Path(self.env["HOME"]).mkdir()
@@ -119,6 +133,7 @@ int main() {
         ident = ident or self.ident
         self.ids.add(ident)
         app = self.root / name / "Jellytool.app"
+        self.apps.append(app)
         (app / "Contents/MacOS").mkdir(parents=True)
         shutil.copy2(self.native, app / "Contents/MacOS/jellytool")
         with (app / "Contents/Info.plist").open("wb") as handle:
@@ -142,6 +157,8 @@ int main() {
                 except ProcessLookupError:
                     pass
             launcher.wait_gone(pids, 5)
+        for app in self.apps:
+            launcher.unregister(app)
 
     def test_ready_then_replace_other_path(self):
         old, new = self.bundle("old"), self.bundle("new")

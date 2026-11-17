@@ -18,7 +18,7 @@ func TestBrandProviderDisplayNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := read()
-	for _, want := range []string{`model_provider = "magpie"`, `[model_providers.magpie]`, `name = "` + product.Name + `"`} {
+	for _, want := range []string{`model_provider = "` + codexProviderID + `"`, `[model_providers.` + codexProviderID + `]`, `name = "` + product.Name + `"`} {
 		if !strings.Contains(config, want) {
 			t.Fatalf("missing %s in %s", want, config)
 		}

@@ -20,15 +20,16 @@ class PackageTests(unittest.TestCase):
 
     def test_release_version_and_feed_are_embedded(self):
         with tempfile.TemporaryDirectory() as folder:
-            output, commands = self.package(folder, "--version", "0.2.0", "--update-feed", "https://downloads.example/latest.json")
+            output, commands = self.package(folder, "--version", "0.2.0", "--build", "20261115.1", "--update-feed", "https://downloads.example/latest.json")
             args = commands.call_args_list[0].args[0]
             flags = args[args.index("-ldflags") + 1]
             self.assertIn("main.version=0.2.0", flags)
             self.assertIn("update.JellytoolFeed=https://downloads.example/latest.json", flags)
+            self.assertEqual(args[args.index("-tags") + 1], "jellytool,production")
             with (output / "Contents/Info.plist").open("rb") as stream:
                 info = plistlib.load(stream)
             self.assertEqual(info["CFBundleShortVersionString"], "0.2.0")
-            self.assertEqual(info["CFBundleVersion"], "0.2.0")
+            self.assertEqual(info["CFBundleVersion"], "20261115.1")
 
     def test_release_requires_an_https_feed_and_a_version(self):
         for options in [("--version", "0.2.0"), ("--version", "bad"), ("--update-feed", "http://example/latest"), ("--update-feed", "https://user:secret@example/latest"), ("--update-feed", "https://example/latest -X main.version=9.0.0")]:

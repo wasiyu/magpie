@@ -42,6 +42,7 @@
   let connection = null, guideKey = "", guideMessage = "", pendingConnection = null;
   let guideKeyVisible = false, guideChecking = false, guideError = "", guideReplace = false;
   let guideRevision = 0, guideRendered = "";
+  const connectionWarning = () => (connection?.warnings || []).map((message) => t(message)).join(" ");
   const config = () => api("jellytool/config").then((c) => (connection = c));
   // Only a user edit enters the supplier draft. Reading the saved connection
   // asynchronously must not make an untouched editor dirty or overwrite typing.
@@ -141,6 +142,7 @@
       saving(save, t("Verifying the key and loading models…"));
       try {
         connection = await api("jellytool/config", { ...own.jellytoken });
+        if (connectionWarning()) status(connectionWarning());
         pendingConnection = null; editing = null; draft = null; adding = false;
         closeModal(); await loadProviders(); state = await api("state"); renderAgents(); await show("quickstart");
       } catch (e) { error.textContent = e.message; doneSaving(save); }
@@ -163,6 +165,7 @@
   window.jellytoolBeforeSave = async (owner) => {
     if (!owner?.jellytoken) return;
     connection = await api("jellytool/config", owner.jellytoken);
+    if (connectionWarning()) status(connectionWarning());
   };
 
   // Recommendations follow the product tiers; GPT roles are fixed product picks.
@@ -589,7 +592,7 @@
       form.setAttribute("aria-busy", "true"); result.textContent = t("Verifying the key and loading models…");
       try {
         connection = await api("jellytool/key", { key: guideKey.trim() });
-        guideKey = ""; guideReplace = false; guideMessage = t("Jellytoken is connected. Continue with model selection.");
+        guideKey = ""; guideReplace = false; guideMessage = [t("Jellytoken is connected. Continue with model selection."), connectionWarning()].filter(Boolean).join(" ");
         await loadProviders(); state = await api("state"); renderAgents();
       } catch (e) { guideError = e.message; }
       finally {

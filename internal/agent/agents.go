@@ -66,6 +66,9 @@ func codexAppRoute() (route string, out, known bool) {
 	defer filememo.Hold()()
 	home, _ := homes()
 	a := codex(home)
+	if product.Jellytool && codexPeerActive(a.Path, codexKeptGateway(a.Path)+"/v1") {
+		return "", false, false
+	}
 	if _, err := os.ReadFile(a.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return "", false, false
 	}
@@ -75,7 +78,7 @@ func codexAppRoute() (route string, out, known bool) {
 		v, _ := edit.GetTOMLTop(a.Path, k)
 		b.WriteString(k + "=" + v + "\n")
 	}
-	t, _ := edit.GetTOMLTable(a.Path, "model_providers."+magpieID)
+	t, _ := edit.GetTOMLTable(a.Path, "model_providers."+codexProviderID)
 	b.WriteString("magpie.base_url=" + t["base_url"] + "\n")
 	// and whether it requires OpenAI auth, which decides whether the app
 	// has its ChatGPT account at all (openaiAuth in codex.go): read as the

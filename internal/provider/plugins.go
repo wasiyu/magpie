@@ -562,6 +562,9 @@ func pluginProviderServing(pp plugin.Provider, l pluginLogin, keys []string) Pro
 	if name == "" {
 		name = pp.ID
 	}
+	if pp.ID == "jellytoken" {
+		name = "Jellytool"
+	}
 	a := &Account{Agent: "plugin", User: user, Plan: l.Plan, Stream: true, plugin: &pp, pluginKey: acct.Key}
 	if pp.ID == "grok" {
 		// Codex's namespaced tools go to Grok flat, as the built-in sends

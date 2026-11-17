@@ -740,10 +740,12 @@ optionally split by `<!-- lang:zh -->`), and an HTTPS `url` without credentials.
 `assets` is unnecessary. A response identifying another product or naming an
 invalid page is rejected.
 
-[`package.py`](../../build/jellytool/package.py) accepts `--version` and
-`--update-feed`; release versions require an HTTPS feed. It stamps the same
-version into `main.version` and both plist version fields. Local builds default
-to `dev` (plist `0.0.0`) with no feed. [`run.py`](../../build/jellytool/run.py)
+[`package.py`](../../build/jellytool/package.py) accepts `--version`, `--build`
+and `--update-feed`; release versions require an HTTPS feed, or an explicit
+numeric `--build` for a local versioned artifact without a feed. The release
+version goes into `main.version` and `CFBundleShortVersionString`; `CFBundleVersion`
+uses the build marker when given, otherwise the release version. Local builds
+default to `dev` (plist `0.0.0`) with no feed. [`run.py`](../../build/jellytool/run.py)
 passes these options through. Publishing/hosting the JSON and download page is
 a separate deployment; no production endpoint is assumed by the packager.
 
@@ -899,15 +901,39 @@ and editor use the same local PNG as the application brand.
 
 [`build/jellytool/run.py`](../../build/jellytool/run.py) packages and launches the
 current checkout in one command: `python3 build/jellytool/run.py`. It selects a
-working Go from PATH or local mise installations, and Bun 1.4.2 from previous
-Jellytool bundles or PATH (`--go` and `--bun` override discovery). It downloads
+working Go from PATH or local mise installations, and Bun 1.4.2 from the installed
+app, previous Jellytool bundles or PATH (`--go` and `--bun` override discovery). It downloads
 no runtime and changes no global tool configuration. Each invocation builds a
-fresh staging bundle under `~/.cache/jellytool-build/artifacts/`, copies the
+fresh staging bundle in a `.noindex` folder under `~/.cache/jellytool-build/artifacts/`, copies the
 completed bundle to `~/Applications/Jellytool.app`, and launches that fixed
 copy. Only after `package.py` succeeds does it install and call `launch.py`, so
-a failed build leaves the running application alone. Packaging, installation
-and launch failures stop the command; launch failures retain the launcher's
-diagnostics and retry limits below.
+a failed build leaves the running application alone. Only the installed bundle
+is launched and registered; the build source is explicitly unregistered after
+successful launch. Temporary install folders are hidden and end in `.noindex`,
+so retained build and rollback copies do not produce extra Spotlight app icons.
+An exported `.app` unpacked elsewhere remains a separate user-managed copy;
+updates should go through this command rather than opening every exported build.
+
+A per-installation file lock covers replacement through native readiness.
+Before replacement, after copying succeeds, `background_processes` inspects
+the user's loaded executable paths with `lsof`, not command-line paths that
+still name the current app after its files were moved. It ends non-GUI Jellytool
+processes from the fixed installation or its renamed/deleted install backups,
+using the launcher's bounded SIGTERM/SIGKILL waits. Other apps and installations
+are left alone. It checks again after native startup and ends old mappings that
+raced the swap, while leaving newly connected processes using the current binary.
+An unreadable inventory or a client that immediately restarts an old process
+fails the update instead of silently reporting completion. The command explains
+that clients must reconnect (Claude's `/mcp`, WorkBuddy's `jellytool-image`
+off/on); it never starts unattached stdio processes as substitute connections.
+In-flight image/video tasks can be interrupted by this explicit update operation.
+
+The old application files are retained until native startup and registration
+succeed. A failed replacement or startup restores them and stops the failed new
+GUI; the user can reopen the restored app. If rollback fails, its backup is kept
+and its path reported, never removed by temporary-folder cleanup. Packaging,
+installation and launch failures stop the command; launch failures retain the
+launcher's diagnostics and retry limits below.
 
 [`build/jellytool/launch.py`](../../build/jellytool/launch.py) replaces a local
 macOS build without asking `open -n` for a second instance. A per-data-root
@@ -937,6 +963,31 @@ another bundle ID sharing the lock, competing launchers and preview behavior:
 
 ```sh
 python3 -B -m unittest discover -s build/jellytool -v
+```
+
+### Multi-platform Jellytool packages
+
+[`package-multi.py`](../../build/jellytool/package-multi.py) builds zip archives
+without installing or launching them. With no `--target`, a macOS or Linux
+host builds its native target and Windows `amd64`/`arm64`; a Windows host
+builds both Windows architectures. Pass `--target` repeatedly to choose an
+explicit set. The target OS must be the host OS except for Windows, which can
+be cross-compiled; Linux and macOS GUI builds need their native webview and
+CGO toolchains.
+
+Each target needs a Bun 1.4.2 executable for that target. A host Bun can be
+passed as `--bun /absolute/bun`; cross-target Buns use mappings such as
+`--bun windows/amd64=/absolute/bun.exe`. The packager never runs a
+cross-target Bun; it records the target OS/architecture in the runtime lock
+and the application verifies it at startup. The output directory must not
+already exist:
+
+```sh
+python3 build/jellytool/package-multi.py \
+  --output /tmp/jellytool-dist \
+  --bun /absolute/bun \
+  --bun windows/amd64=/absolute/bun-windows-amd64.exe \
+  --bun windows/arm64=/absolute/bun-windows-arm64.exe
 ```
 
 ### Jellytool menu bar and supplier guidance

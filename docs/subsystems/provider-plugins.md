@@ -43,8 +43,10 @@ management and `Fetch` for `jellytoken`. Provider results have the same data
 shape as the supplier page.
 The plugin preserves full model IDs and TEXT/IMAGE/VIDEO output kinds; type
 does not prove protocol, vision input, context, price or tool compatibility.
-Business errors, empty/malformed/unknown catalogs and HTTP failures are reported
-as listing failures without echoing the key. Catalog 401/403 retries once with
+Malformed or unsupported rows are skipped, and the first supported row for each
+model ID is kept. Business errors, malformed catalogs, catalogs with no supported
+models and HTTP failures are reported as listing failures without echoing the key.
+Catalog 401/403 retries once with
 X-API-Key. Requests forward only POSTs to the Chat, Responses, Anthropic,
 Gemini generation, System One, image generation/editing and video creation
 paths under the saved base, plus GETs for a video's status and content;
@@ -86,6 +88,10 @@ connection changes must successfully read the candidate `/v1/models` before
 the host atomically replaces its one `plugin-auth.json` entry. Connection
 metadata and key are in the same record; a failed validation or durable write
 preserves the old record. No host restart or second credential store is used.
+Unsupported, malformed and duplicate model entries are skipped without rejecting
+the usable catalog. A successful save returns a non-blocking warning displayed
+by the connection editor and quickstart; no upstream entry text is exposed.
+A catalog with no supported models still fails validation.
 New connections and records without protocol metadata default to the official
 base and Responses. Explicit saved protocols, including Chat Completions, remain
 unchanged. The connection editor's Restore default also selects Responses.
@@ -373,14 +379,21 @@ these optional fields; no provider id is special-cased in magpie.
 A `jellytool` build enters [`jellytoolMain`](../../internal/cli/jellytool.go)
 before magpie startup. [`RunJellytool`](../../internal/gui/jellytool_app.go)
 activates the verified private host through
-[`ActivateJellytool`](../../internal/plugin/jellytool_active.go). The existing
-provider adapter's Cached/Providers/APIKey/LoaderOptions/Fetch calls then use
-that host and its memory catalog, never the general registry or disk catalog
-fallback. Its key account is fixed to `jellytoken`; a closed host fails rather
+[`ActivateJellytool`](../../internal/plugin/jellytool_active.go). Jellytoken's
+APIKey/LoaderOptions/Fetch calls use that host and its memory catalog, without
+falling back to the general host. Cached/Providers combine its catalog with
+the ordinary plugins' catalog when the user has installed any. Its key account
+is fixed to `jellytoken`; a closed private host fails rather
 than downloading or replacing a runtime. Normal builds retain their existing
 host lifecycle. The P0 owned-host API remains available for isolated contract
 checks. See the [P1 implementation record](../plans/jellytool-plugin-p1.md)
 for product admission, build identities and verification limits.
+
+Startup preserves legacy generic provider records, including their keys,
+additional accounts and model choices. Matching the Jellytoken ID and default
+endpoint does not prove that the bundled plugin has those credentials or picks,
+so startup does not delete or retire such entries. In particular, a plugin startup
+failure leaves them intact (`TestJellytoolFailedStartupPreservesLegacyProvider`).
 
 [`jellytool_gateway_test.go`](../../internal/plugin/jellytool_gateway_test.go)
 exercises a real dynamic loopback gateway through this adapter and the private
