@@ -29,7 +29,7 @@ Windows 安装包、运行和签名属于 P3。正式分发前还要完成 Bun �
 
 ## 运行链路
 
-`cli.jellytoolMain -> gui.RunJellytool -> plugin.ActivateJellytool` 验证并启动 P0
+`cli.jellytoolMain -> gui.RunJellytool -> plugin.ActivateJellytool` 验证并启动 P0（2026-11-19：`jellytoolMain` 从未接入，已删除；应用由 `openApp` 直接进入 `RunJellytool`）
 的私有宿主。供应商适配器继续调用 `plugin.Cached/Providers/APIKey/LoaderOptions/Fetch`，
 这些入口在 Jellytool 构建中只转到已激活的私有宿主和内存目录。插件异常退出后
 不会下载 Bun 或启动通用宿主；需要重启 Jellytool。
@@ -68,7 +68,7 @@ GUI 请求在通用 mux 前按方法和精确路径准入；通用安装、导�
 该静态样式表；Usage 的合计观察器原先仍在核心 app.js 中，已移回 Usage 插件。
 这也消除了原核心脚本超额，无须提高体积预算。核心导航只观察实际存在的视图。
 
-`gateway.ServeJellytool` 只接受已取得的监听器，复用原网关请求处理，但不启动
+`gateway.ServeJellytool`（2026-11-19：从未接入，已删除；Jellytool 用普通网关的 `Front`）只接受已取得的监听器，复用原网关请求处理，但不启动
 `WhileServing` 等后台活动。外层只开放 `/v1/models` 的 GET 和三个推理路径的
 POST：Chat、Responses、Messages。旧管理、性能分析、MCP、Codex 订阅后端和
 非 `/v1` 的别名不开放。原 Host/Origin/请求鉴权守卫仍运行。

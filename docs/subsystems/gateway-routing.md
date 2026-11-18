@@ -3649,8 +3649,12 @@ shared [`startBackend`](../../internal/gui/backend.go), which serves
 `ListenAndServe` and [`Front`](../../internal/gateway/oneport.go), with
 Jellytool's product identity, data root and default loopback port 3435.
 It uses the normal gateway, plugin host and feature set described above.
-The restricted `ServeJellytool` / `JellytoolFront` remain legacy entry points;
-the earlier restricted application is documented in [Jellytool P1](../plans/jellytool-plugin-p1.md).
+Its port is guarded as magpie's is (`lanGuard`, a gateway key from another
+machine, the Host and Origin checks); there is no narrower route list. The
+earlier restricted entry points (`ServeJellytool`, `JellytoolFront`, which
+admitted only `/v1/models` and the three inference routes) were never wired
+into the app and are gone; [Jellytool P1](../plans/jellytool-plugin-p1.md)
+records that design.
 
 In a Jellytool build, `Front` applies the WorkBuddy Responses compatibility
 writer after its normal network guards. For WorkBuddy requests to Responses,

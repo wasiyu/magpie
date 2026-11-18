@@ -75,12 +75,13 @@ func TestJellytoolGatewayThroughPrivateHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := gateway.New()
+	// the gateway's own front, as a Jellytool build serves it (startBackend)
+	front := &http.Server{Handler: gateway.New().Front(), ReadHeaderTimeout: 15 * time.Second}
 	done := make(chan error, 1)
-	go func() { done <- server.ServeJellytool(ctx, ln) }()
+	go func() { done <- front.Serve(ln) }()
 	defer func() {
-		cancel()
-		if err := <-done; err != nil {
+		front.Close()
+		if err := <-done; err != nil && err != http.ErrServerClosed {
 			t.Error(err)
 		}
 	}()

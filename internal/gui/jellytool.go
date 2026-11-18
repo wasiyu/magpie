@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yetone/magpie/internal/agent"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/lazyre"
 	"github.com/yetone/magpie/internal/plugin"
@@ -344,33 +343,6 @@ func jellytoolConnectionRoute(rw http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(rw, result)
 }
-
-func jellytoolPageRoute(r *http.Request) bool {
-	return r.Method == http.MethodGet || r.Method == http.MethodPost
-}
-
-func jellytoolAgentID(id string) bool {
-	return id == "codex" || id == "claude" || id == "opencode" || id == "workbuddy"
-}
-
-func jellytoolProvidersState() providersJSON {
-	agents := agent.Detected()
-	uses := agentUses(agents, provider.GroupFinder())
-	s := providersJSON{Providers: []providerJSON{}, Presets: []presetJSON{}, Excluded: []excludedJSON{}, Plugins: pluginSubs(), OnPlugins: []string{"jellytoken"}}
-	for i := range s.Plugins {
-		s.Plugins[i].Icon = "jellytoken"
-	}
-	for _, p := range provider.All() {
-		row := providerInfo(p, uses)
-		row.Icon = "jellytoken"
-		s.Providers = append(s.Providers, row)
-	}
-	s.Gateway = gatewayJSON{URL: gateway.URL(), Running: served.Load() != nil, Mine: true, Window: true, Calls: []gateway.Call{}, Groups: []gwGroupJSON{}}
-	return s
-}
-
-// Keep this timeout independent of the upstream GUI's update/handover waits.
-const jellytoolShutdownWait = 6 * time.Second
 
 // Only the existing shell, provider editor and Agent scripts enter this app.
 // Library's static stylesheet also supplies the shared switch controls.

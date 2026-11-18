@@ -538,8 +538,10 @@ the plugin's. Tests: `TestPluginInstallsItsCLI`,
 
 ## Jellytool application composition
 
-A `jellytool` build enters [`jellytoolMain`](../../internal/cli/jellytool.go)
-before magpie startup. [`RunJellytool`](../../internal/gui/jellytool_app.go)
+A `jellytool` build runs magpie's own command line, its text branded
+(`product.Text`); the app (`openApp` in
+[`gui_on.go`](../../internal/cli/gui_on.go)) starts
+[`RunJellytool`](../../internal/gui/jellytool_app.go), which
 activates the verified private host through
 [`ActivateJellytool`](../../internal/plugin/jellytool_active.go). Jellytoken's
 APIKey/LoaderOptions/Fetch calls use that host and its memory catalog, without
