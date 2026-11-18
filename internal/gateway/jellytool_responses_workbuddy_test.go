@@ -296,3 +296,43 @@ func TestWorkBuddyResponsesWriterPreservesReadDeadlines(t *testing.T) {
 		}
 	}))
 }
+
+// A JSON reply larger than workBuddyJSONMost goes on as it came, in pieces,
+// instead of being held whole; one that isn't 2xx JSON is never held, and
+// keeps its Content-Length.
+func TestWorkBuddyResponsesWriterHoldsOnlySmallJSON(t *testing.T) {
+	was := workBuddyJSONMost
+	t.Cleanup(func() { workBuddyJSONMost = was })
+	workBuddyJSONMost = 64
+	serve := func(contentType string, status int, parts ...string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{}`))
+		r.Header.Set("User-Agent", "WorkBuddy/5.9.3")
+		writeWorkBuddyResponsesThrough(w, r, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", contentType)
+			w.Header().Set("Content-Length", strconv.Itoa(len(strings.Join(parts, ""))))
+			w.WriteHeader(status)
+			for _, p := range parts {
+				w.Write([]byte(p))
+			}
+		}))
+		return w
+	}
+	big := `{"output":"` + strings.Repeat("x", 100) + `","usage":{"input_tokens_details":{"cached_tokens":{"ttl":2}}}}`
+	if w := serve("application/json", 200, big[:50], big[50:]); w.Body.String() != big {
+		t.Fatalf("a reply over the hold was changed: %s", w.Body)
+	}
+	small := `{"usage":{"input_tokens_details":{"cached_tokens":{"ttl":2}}}}`
+	if w := serve("application/json", 200, small); !strings.Contains(w.Body.String(), "input_tokens_details_extra") {
+		t.Fatalf("a small reply was not normalized: %s", w.Body)
+	}
+	for _, c := range []struct {
+		kind   string
+		status int
+	}{{"application/json", 500}, {"text/plain", 200}} {
+		w := serve(c.kind, c.status, small)
+		if w.Body.String() != small || w.Header().Get("Content-Length") != strconv.Itoa(len(small)) {
+			t.Fatalf("%s %d: %q, Content-Length %q", c.kind, c.status, w.Body, w.Header().Get("Content-Length"))
+		}
+	}
+}

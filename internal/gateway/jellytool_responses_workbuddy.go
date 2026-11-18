@@ -27,11 +27,27 @@ func writeWorkBuddyResponsesThrough(w http.ResponseWriter, r *http.Request, next
 	writer.finish()
 }
 
+// workBuddyJSONMost is the largest whole JSON reply held to normalize its
+// usage; a larger one goes on as it came. A Responses reply's usage is at
+// its end, so holding a reply holds all of it: an image answered whole can
+// be tens of MB, and holding it past this kept the client waiting.
+var workBuddyJSONMost = 4 << 20
+
+// The reply's kind is decided once, as its header goes (writeHead): an SSE
+// stream is normalized an event at a time, a 2xx JSON reply is held whole up
+// to workBuddyJSONMost, and anything else (an error, another type) goes on
+// untouched, its Content-Length and integrity headers kept.
+const (
+	workBuddyPass = iota
+	workBuddyStream
+	workBuddyJSON
+)
+
 type workBuddyResponseWriter struct {
 	http.ResponseWriter
 	body     bytes.Buffer
 	line     bytes.Buffer
-	stream   bool
+	mode     int
 	status   int
 	finished bool
 }
@@ -43,9 +59,20 @@ func (w *workBuddyResponseWriter) WriteHeader(status int) {
 		return
 	}
 	w.status = status
-	w.Header().Del("Content-Length")
-	for _, key := range []string{"ETag", "Content-MD5", "Digest"} {
-		w.Header().Del(key)
+	content, _, _ := mime.ParseMediaType(w.Header().Get("Content-Type"))
+	switch {
+	case content == "text/event-stream":
+		w.mode = workBuddyStream
+	case status >= 200 && status < 300 && (content == "application/json" || strings.HasSuffix(content, "+json")):
+		w.mode = workBuddyJSON
+	default:
+		w.mode = workBuddyPass
+	}
+	if w.mode != workBuddyPass {
+		// the body may change length, so what vouched for the old one goes
+		for _, key := range []string{"Content-Length", "ETag", "Content-MD5", "Digest"} {
+			w.Header().Del(key)
+		}
 	}
 	w.ResponseWriter.WriteHeader(status)
 }
@@ -54,15 +81,30 @@ func (w *workBuddyResponseWriter) Write(p []byte) (int, error) {
 	if w.status == 0 {
 		w.WriteHeader(http.StatusOK)
 	}
-	content, _, _ := mime.ParseMediaType(w.Header().Get("Content-Type"))
-	w.stream = content == "text/event-stream"
-	if w.stream {
+	switch w.mode {
+	case workBuddyStream:
 		return w.writeStream(p)
+	case workBuddyJSON:
+		if w.body.Len()+len(p) <= workBuddyJSONMost {
+			return w.body.Write(p)
+		}
+		// too large to hold: what was held and the rest go on as they came
+		w.mode = workBuddyPass
+		if w.body.Len() > 0 {
+			if _, err := w.ResponseWriter.Write(w.body.Bytes()); err != nil {
+				return 0, err
+			}
+			w.body.Reset()
+		}
 	}
-	return w.body.Write(p)
+	return w.ResponseWriter.Write(p)
 }
 
 func (w *workBuddyResponseWriter) Flush() {
+	// a JSON reply held whole has nothing to send before its end
+	if w.mode == workBuddyJSON {
+		return
+	}
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
@@ -100,20 +142,19 @@ func (w *workBuddyResponseWriter) finish() {
 		return
 	}
 	w.finished = true
-	if w.stream {
+	switch w.mode {
+	case workBuddyStream:
 		w.body.Write(w.line.Bytes())
 		if w.body.Len() > 0 {
 			_ = writeWorkBuddySSEEvent(w.ResponseWriter, w.body.Bytes())
 		}
-		return
-	}
-	body := w.body.Bytes()
-	if w.status >= 200 && w.status < 300 {
+	case workBuddyJSON:
+		body := w.body.Bytes()
 		if normalized, changed := normalizeWorkBuddyResponsesJSON(body); changed {
 			body = normalized
 		}
+		_, _ = w.ResponseWriter.Write(body)
 	}
-	_, _ = w.ResponseWriter.Write(body)
 }
 
 func writeWorkBuddySSEEvent(w http.ResponseWriter, event []byte) error {
