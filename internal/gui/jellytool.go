@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -25,11 +26,25 @@ type jellytoolPrice struct {
 	Output float64 `json:"output"`
 }
 
+// jellytoolPrices caches the per-model prices Jellytoken's site shows. The
+// models page answers with what is kept and has it read again in the
+// background once it is older than jellytoolPriceFresh, one read at a time;
+// only the first ask waits for it, and for jellytoolPriceFirstWait at most.
+// A read is the app's own, not the page request's: a page closed half way
+// leaves no half-read prices kept as fresh.
 var jellytoolPrices = struct {
 	sync.Mutex
-	at   time.Time
-	data map[string]jellytoolPrice
+	at      time.Time
+	data    map[string]jellytoolPrice
+	reading chan struct{} // closed when the read in flight ends; nil when none is
 }{data: map[string]jellytoolPrice{}}
+
+var (
+	jellytoolPriceURL       = "https://www.jellytoken.com/api/console/getModelDetail"
+	jellytoolPriceFresh     = 10 * time.Minute
+	jellytoolPriceFirstWait = 3 * time.Second
+	jellytoolPriceClient    = &http.Client{Timeout: 10 * time.Second} // the app's transport, its proxy included
+)
 
 func jellytoolPriceCandidates(ps []plugin.Provider) []string {
 	seen := map[string]bool{}
@@ -61,12 +76,31 @@ func containsString(xs []string, want string) bool {
 
 func jellytoolPriceData(ctx context.Context, ids []string) map[string]jellytoolPrice {
 	jellytoolPrices.Lock()
-	if time.Since(jellytoolPrices.at) < 10*time.Minute {
-		out := mapsClone(jellytoolPrices.data)
-		jellytoolPrices.Unlock()
-		return out
+	first := jellytoolPrices.at.IsZero()
+	reading := jellytoolPrices.reading
+	if reading == nil && time.Since(jellytoolPrices.at) >= jellytoolPriceFresh && len(ids) > 0 {
+		reading = make(chan struct{})
+		jellytoolPrices.reading = reading
+		go jellytoolReadPrices(slices.Clone(ids), reading)
 	}
 	jellytoolPrices.Unlock()
+	if first && reading != nil {
+		select {
+		case <-reading:
+		case <-ctx.Done():
+		case <-time.After(jellytoolPriceFirstWait):
+		}
+	}
+	jellytoolPrices.Lock()
+	defer jellytoolPrices.Unlock()
+	return mapsClone(jellytoolPrices.data)
+}
+
+// jellytoolReadPrices reads ids' prices, six at a time, and keeps those it
+// got; a model it couldn't read keeps the price read before.
+func jellytoolReadPrices(ids []string, done chan struct{}) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 	type priceRow struct {
 		Usage string  `json:"usageField"`
 		Unit  string  `json:"priceUnit"`
@@ -77,24 +111,19 @@ func jellytoolPriceData(ctx context.Context, ids []string) map[string]jellytoolP
 	got := map[string]jellytoolPrice{}
 	sem := make(chan struct{}, 6)
 	for _, id := range ids {
-		id := id
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			select {
-			case sem <- struct{}{}:
-			case <-ctx.Done():
-				return
-			}
+			sem <- struct{}{}
 			defer func() { <-sem }()
 			body, _ := json.Marshal(map[string]string{"modelCode": id})
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://www.jellytoken.com/api/console/getModelDetail", bytes.NewReader(body))
+			req, err := http.NewRequestWithContext(ctx, http.MethodPost, jellytoolPriceURL, bytes.NewReader(body))
 			if err != nil {
 				return
 			}
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Page-Pathname", "/models")
-			res, err := http.DefaultClient.Do(req)
+			res, err := jellytoolPriceClient.Do(req)
 			if err != nil {
 				return
 			}
@@ -133,9 +162,9 @@ func jellytoolPriceData(ctx context.Context, ids []string) map[string]jellytoolP
 		jellytoolPrices.data[id] = p
 	}
 	jellytoolPrices.at = time.Now()
-	out := mapsClone(jellytoolPrices.data)
+	jellytoolPrices.reading = nil
 	jellytoolPrices.Unlock()
-	return out
+	close(done)
 }
 
 func mapsClone(in map[string]jellytoolPrice) map[string]jellytoolPrice {
