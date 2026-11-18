@@ -113,18 +113,60 @@ def stage_icon(root, resources):
 
 def copy_common_files(root, package_dir, resources):
     shutil.copyfile(root / "internal/gui/assets/jellytool-guide.md", resources / "使用说明.md")
-    shutil.copyfile(root / "internal/gui/assets/jellytool-models.json", package_dir / "model-recommendations.example.json")
-    shutil.copyfile(root / "docs/plans/jellytool-model-recommendations.md", package_dir / "模型推荐配置说明.md")
-    shutil.copyfile(root / "internal/gui/assets/jellytool-guide.md", package_dir / "使用说明.md")
     shutil.copyfile(root / "LICENSE", resources / "LICENSE")
     intro, separator, notices = (root / "THIRD_PARTY_NOTICES").read_text().partition("\n----------------")
     (resources / "THIRD_PARTY_NOTICES").write_text(intro.replace("magpie", "Jellytool") + separator + notices)
-    if package_dir.name.startswith("Jellytool-macOS-"):
-        (package_dir / "安装说明.txt").write_text(
-            "Jellytool macOS 安装说明\n\n"
-            "请将 Jellytool.app 拖动到“应用程序”文件夹后再运行。\n"
-            "首次打开时，如 macOS 提示确认，请选择“打开”。\n"
-        )
+
+
+def archive_package(package_dir, target):
+    if target.startswith("darwin/"):
+        (package_dir / "Applications").symlink_to("/Applications", target_is_directory=True)
+        archive = package_dir.with_suffix(".dmg")
+        subprocess.run([
+            "hdiutil", "create", "-volname", "Jellytool - 拖入 Applications 安装",
+            "-srcfolder", str(package_dir), "-size", "512m", "-format", "UDZO", str(archive),
+        ], check=True)
+    elif target.startswith("windows/"):
+        archive = package_dir.parent / (package_dir.name + "-Setup.exe")
+        script = package_dir.parent / (package_dir.name + ".nsi")
+        script.write_text(r'''Unicode true
+!include "MUI2.nsh"
+Name "Jellytool"
+OutFile "ARCHIVE"
+InstallDir "$LOCALAPPDATA\Programs\Jellytool"
+RequestExecutionLevel user
+SetCompressor /SOLID lzma
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+!insertmacro MUI_LANGUAGE "SimpChinese"
+Section
+SetOutPath "$INSTDIR"
+File /r "SOURCE/*"
+WriteUninstaller "$INSTDIR\Uninstall.exe"
+CreateShortcut "$SMPROGRAMS\Jellytool.lnk" "$INSTDIR\Jellytool.exe"
+WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jellytool" "DisplayName" "Jellytool"
+WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jellytool" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
+SectionEnd
+Section "Uninstall"
+Delete "$SMPROGRAMS\Jellytool.lnk"
+Delete "$INSTDIR\Jellytool.exe"
+Delete "$INSTDIR\Uninstall.exe"
+RMDir /r "$INSTDIR\jellytool-resources"
+RMDir "$INSTDIR"
+DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jellytool"
+SectionEnd
+'''.replace("ARCHIVE", str(archive)).replace("SOURCE", str(package_dir)))
+        try:
+            subprocess.run(["makensis", str(script)], check=True)
+        finally:
+            script.unlink()
+    else:
+        archive = package_dir.with_suffix(".zip")
+        shutil.make_archive(str(archive.with_suffix("")), "zip", root_dir=package_dir.parent, base_dir=package_dir.name)
+    shutil.rmtree(package_dir)
+    return archive.name
 
 
 def build_target(root, go, target, bun, staging, args, env, host):
@@ -175,10 +217,7 @@ def build_target(root, go, target, bun, staging, args, env, host):
                 "CFBundleVersion": args.build or (args.version if args.version != "dev" else "0.0.0"),
                 "LSMinimumSystemVersion": "12.0", "NSHighResolutionCapable": True,
             }, stream)
-    archive = staging / (name + ".zip")
-    shutil.make_archive(str(archive.with_suffix("")), "zip", root_dir=staging, base_dir=name)
-    shutil.rmtree(package_dir)
-    return archive.name
+    return archive_package(package_dir, target)
 
 
 def main(argv=None):

@@ -1840,7 +1840,15 @@ python3 -B -m unittest discover -s build/jellytool -v
 
 ### Multi-platform Jellytool packages
 
-[`package-multi.py`](../../build/jellytool/package-multi.py) builds zip archives
+[`package-multi.py`](../../build/jellytool/package-multi.py) builds macOS DMG
+images, Windows NSIS setup executables, and Linux ZIP archives. Windows setup
+installs under the current user's LocalAppData/Programs/Jellytool, creates a
+Start menu shortcut and registers an uninstaller. Subsequent installations use
+the same directory; NSIS (makensis) must be available on the build host.
+The macOS image contains
+only `Jellytool.app` and an `Applications` link to `/Applications`. Its volume
+name repeats the drag-to-install instruction; this guides installation but does
+not enforce the application's launch location. It builds packages
 without installing or launching them. With no `--target`, a macOS or Linux
 host builds its native target and Windows `amd64`/`arm64`; a Windows host
 builds both Windows architectures. Pass `--target` repeatedly to choose an
@@ -1889,8 +1897,10 @@ claiming usage-only support. Five-language browser checks cover the guidance,
 actions, empty states and draft behavior in Chromium and WebKit.
 
 [`jellytool-guide.md`](../../internal/gui/assets/jellytool-guide.md) is the
-bundled Chinese usage document. The packager copies it into Resources and
-beside the app as `使用说明.md`, so an offline build carries its instructions.
+bundled Chinese usage document. Both packagers copy it into the application's
+resources as `使用说明.md`, so an offline build carries its instructions.
+The local macOS `package.py` also copies it beside the app; multi-platform
+distribution packages keep it inside the application's resources.
 
 ### Jellytoken connection guidance and settings
 
