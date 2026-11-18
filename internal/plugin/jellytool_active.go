@@ -30,6 +30,10 @@ var jellytoolCatalog struct {
 // key or a sign-out. Each refresh after one starts from no catalog.
 var jellytoolKey atomic.Uint64
 
+// jellytoolSavedUnlisted is the warning a save gives when the key was kept
+// but the catalog could not be read after it (i18n.js has it).
+const jellytoolSavedUnlisted = "The key was saved, but its model list couldn't be read yet. Try again in a moment."
+
 // jellytoolListRefused says a failed list was the vendor's answer about
 // the key (HTTP 401 or 403, or a business error in the reply), not a
 // failure to ask: a timeout, a dropped connection, a 429 or a 5xx says
@@ -94,7 +98,12 @@ func JellytoolConnection(ctx context.Context, in map[string]any) (map[string]any
 		jellytoolKey.Add(1)
 		generation.Add(1)
 		changed()
-		_, _ = refreshJellytoolLocked(ctx)
+		// the key is saved either way; a catalog that couldn't be read
+		// after it is said, not dropped, as jellytoolAPIKey's error says it
+		if ps, err := refreshJellytoolLocked(ctx); err != nil || len(ps) == 1 && (ps[0].FellBack || ps[0].ListError != "") {
+			warnings, _ := result["warnings"].([]any)
+			result["warnings"] = append(warnings, jellytoolSavedUnlisted)
+		}
 	}
 	return result, nil
 }

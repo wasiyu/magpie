@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -81,5 +82,41 @@ func TestJellytoolDetectHoldsNoCatalogLock(t *testing.T) {
 	case err := <-done:
 		t.Fatalf("detect ended before the refresh was checked: %v", err)
 	default:
+	}
+}
+
+// A key is saved after its list was read once (the save's own check); a
+// list that then can't be read again is said with the save, not dropped.
+func TestJellytoolSaveSaysAnUnreadList(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	resources, data := t.TempDir(), t.TempDir()
+	if err := PackJellytoolPlugins(ctx, testenv.Bun(t), resources); err != nil {
+		t.Fatal(err)
+	}
+	var lists atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" && lists.Add(1) == 1 {
+			fmt.Fprint(w, `{"data":[{"id":"m1","type":"TEXT"}]}`)
+			return
+		}
+		w.WriteHeader(503)
+	}))
+	defer srv.Close()
+	p, err := startJellytoolPlugins(ctx, resources, data, map[string]any{"testOrigin": srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !jellytoolActive.CompareAndSwap(nil, p) {
+		t.Fatal("already active")
+	}
+	defer p.Close()
+	res, err := JellytoolConnection(ctx, map[string]any{"action": "save", "key": "fixture-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	warnings, _ := res["warnings"].([]any)
+	if len(warnings) == 0 || warnings[len(warnings)-1] != jellytoolSavedUnlisted {
+		t.Fatalf("save after an unread list: %v", res)
 	}
 }
