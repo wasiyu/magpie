@@ -9,13 +9,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/yetone/magpie/internal/agent"
 	"github.com/yetone/magpie/internal/gateway"
+	"github.com/yetone/magpie/internal/lazyre"
 	"github.com/yetone/magpie/internal/plugin"
 	"github.com/yetone/magpie/internal/provider"
 )
@@ -355,7 +355,7 @@ func jellytoolIcon() []byte {
 	return b
 }
 
-var jellytoolBrandLogo = regexp.MustCompile(`(?s)<span class="logo"[^>]*>.*?</span>`)
+var jellytoolBrandLogo = lazyre.New(`(?s)<span class="logo"[^>]*>.*?</span>`)
 
 func jellytoolPage() []byte {
 	b, _ := assets.ReadFile("assets/index.html")

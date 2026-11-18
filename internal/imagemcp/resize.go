@@ -7,10 +7,10 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 	pngenc "image/png"
-	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/yetone/magpie/internal/lazyre"
 	xdraw "golang.org/x/image/draw"
 	"golang.org/x/image/math/f64"
 	_ "golang.org/x/image/webp"
@@ -25,7 +25,7 @@ const (
 	imageMaxMemory = 512 << 20
 )
 
-var exactSize = regexp.MustCompile(`^([0-9]+)[xX]([0-9]+)$`)
+var exactSize = lazyre.New(`^([0-9]+)[xX]([0-9]+)$`)
 
 // pixelSize leaves ratios and model-specific size names to the provider.
 func pixelSize(size string) (image.Point, error) {
