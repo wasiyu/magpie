@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/product"
 )
 
@@ -84,6 +85,7 @@ func JellytoolConnection(ctx context.Context, in map[string]any) (map[string]any
 	if err != nil {
 		return nil, err
 	}
+	in["proxy"] = jellytoolAccountProxy()
 	var result map[string]any
 	if err := h.call(ctx, "jellytool", in, &result); err != nil {
 		return nil, err
@@ -95,6 +97,35 @@ func JellytoolConnection(ctx context.Context, in map[string]any) (map[string]any
 		_, _ = refreshJellytoolLocked(ctx)
 	}
 	return result, nil
+}
+
+// jellytoolProxy is the proxy the bundled host sends a request through for
+// choice (netproxy.With's: "" the app's own, "direct", a URL or a saved
+// proxy's name), as magpie's other Bun processes take it (EnvWith): the
+// provider's proxy, else Settings' global one, else the system's. The host
+// is started with no proxy in its environment, so the choice goes with each
+// call; before, every Jellytoken request went direct whatever was set.
+func jellytoolProxy(choice string) string {
+	env := netproxy.EnvWith(choice, nil)
+	for _, want := range []string{"HTTPS_PROXY", "ALL_PROXY", "HTTP_PROXY"} {
+		for _, e := range env {
+			k, v, _ := strings.Cut(e, "=")
+			if strings.EqualFold(k, want) && strings.TrimSpace(v) != "" {
+				return forHost(strings.TrimSpace(v))
+			}
+		}
+	}
+	return "direct"
+}
+
+// jellytoolAccountProxy is jellytoolProxy for the bundled account's own
+// proxy setting (the provider's, as ProxyFor gives it).
+func jellytoolAccountProxy() string {
+	choice := ""
+	if ProxyFor != nil {
+		choice = ProxyFor("jellytoken", "jellytoken")
+	}
+	return jellytoolProxy(choice)
 }
 
 func jellytoolCached() []Provider {
@@ -212,7 +243,7 @@ func jellytoolCall(ctx context.Context, method string, params, out any) error {
 		jellytoolAuthMu.Lock()
 		defer jellytoolAuthMu.Unlock()
 	}
-	in["proxy"] = "direct"
+	in["proxy"] = jellytoolAccountProxy()
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	if err := h.call(ctx, method, in, out); err != nil {

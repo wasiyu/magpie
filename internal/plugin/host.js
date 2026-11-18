@@ -3651,7 +3651,8 @@ const handlers = {
     const a = auths().get("jellytoken")?.auth
     if (typeof a?.jellytool !== "function") throw new Error("Jellytoken connection settings are unavailable")
     const key = signInKey("jellytoken", "jellytoken")
-    const result = await via.run("direct", () => inScope("jellytoken", key, () => a.jellytool(authCopy(key), p)))
+    // through the account's proxy, as jellytoolAccountProxy gives it
+    const result = await via.run(p.proxy || "direct", () => inScope("jellytoken", key, () => a.jellytool(authCopy(key), p)))
     if (result.auth) {
       // setAuth writes the file before it resolves; the caller reads it next
       await setAuth(key, result.auth)

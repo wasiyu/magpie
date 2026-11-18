@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/proc"
 )
 
@@ -174,7 +175,7 @@ func startJellytoolPlugins(ctx context.Context, resources, data string, testOpti
 	cmd := proc.Command(bun, "--no-install", "run", filepath.Join(dir, "host.js"))
 	cmd.Dir = data
 	// Do not inherit BUN_OPTIONS/NODE_OPTIONS, preloads, proxies or magpie paths.
-	cmd.Env = []string{"PATH=" + filepath.Dir(bun), "HOME=" + data, "USERPROFILE=" + data, "BUN_INSTALL_AUTO=disable", "NODE_USE_SYSTEM_CA=1"}
+	cmd.Env = jellytoolHostEnv(runtime.GOOS, filepath.Dir(bun), data, os.Getenv)
 	if testOptions != nil {
 		if os.Getenv("MAGPIE_TEST_SANDBOX") == "" {
 			return nil, errors.New("Jellytool test options require a sandbox")
@@ -203,6 +204,26 @@ func startJellytoolPlugins(ctx context.Context, resources, data string, testOpti
 		return nil, err
 	}
 	return &JellytoolPlugins{h: h}, nil
+}
+
+// jellytoolHostEnv is the bundled host's whole environment: no preloads,
+// proxies or magpie paths are inherited. Windows also keeps the system's own
+// variables a process needs there (SystemRoot for its DLLs, sockets and TLS,
+// TEMP, ComSpec, PATHEXT, …): without them a process can't use the network
+// or find its temporary folder.
+func jellytoolHostEnv(goos, bin, data string, getenv func(string) string) []string {
+	env := []string{"PATH=" + bin, "HOME=" + data, "USERPROFILE=" + data, "BUN_INSTALL_AUTO=disable", "NODE_USE_SYSTEM_CA=1"}
+	if goos == "windows" {
+		for _, k := range []string{"SystemRoot", "SystemDrive", "windir", "ComSpec", "PATHEXT", "TEMP", "TMP", "LOCALAPPDATA", "APPDATA", "ProgramData", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE"} {
+			if v := getenv(k); v != "" {
+				env = append(env, k+"="+v)
+			}
+		}
+		if root := getenv("SystemRoot"); root != "" {
+			env[0] = "PATH=" + bin + ";" + filepath.Join(root, "System32")
+		}
+	}
+	return env
 }
 
 func jellytoolFileSum(path string) (string, error) {
@@ -248,7 +269,8 @@ func jellytoolStageFile(path string, content []byte) error {
 // It deliberately does not publish to magpie's provider cache.
 func (p *JellytoolPlugins) Providers(ctx context.Context) ([]Provider, error) {
 	var result []Provider
-	err := p.h.call(ctx, "providers", nil, &result)
+	x := jellytoolAccountProxy()
+	err := p.h.call(ctx, "providers", map[string]any{"proxies": map[string]map[string]string{"jellytoken": {"": x, "jellytoken": x}}}, &result)
 	return result, err
 }
 
@@ -263,10 +285,14 @@ func (p *JellytoolPlugins) APIKey(ctx context.Context, key string) error {
 }
 
 func (p *JellytoolPlugins) Fetch(ctx context.Context, r FetchRequest) (*http.Response, error) {
-	if r.Provider != "jellytoken" || r.Account != "" && r.Account != "jellytoken" || r.Proxy != "" {
+	if r.Provider != "jellytoken" || r.Account != "" && r.Account != "jellytoken" {
 		return nil, errors.New("Jellytool permits only its bundled Jellytoken provider")
 	}
-	r.Proxy = "direct"
+	// the request's proxy (the provider's, set on ctx by the gateway), else
+	// the app's: the host itself has none in its environment
+	if r.Proxy == "" {
+		r.Proxy = jellytoolProxy(netproxy.Choice(ctx))
+	}
 	return p.h.fetch(ctx, r)
 }
 
