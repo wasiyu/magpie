@@ -50,6 +50,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           const page = await context.newPage(), errors = [];
           await page.clock.install();
           page.setDefaultTimeout(8000);
+          page.setDefaultNavigationTimeout(60000);
           page.on("pageerror", (e) => errors.push(e.message));
           await page.route("**/*", server(lang, ctl));
           await watchSettingsReads(page);

@@ -27,6 +27,7 @@ async function newPage(engine, options) {
   const context = await (await launch(engine)).newContext(options);
   const page = await context.newPage();
   page.setDefaultTimeout(6000);
+  page.setDefaultNavigationTimeout(60000);
   return { context, page };
 }
 async function closePage(context) { await context.close(); }

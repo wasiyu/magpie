@@ -685,7 +685,7 @@
     const model = section("Image model"), tool = section("MCP tool"), use = section("Prompt examples");
     const choose = el("button", "text qs-image-model", t("Choose an image model")); choose.type = "button";
     choose.onclick = (e) => openSettingsAt(e, "models", $("#imagesList"));
-    model.body.append(el("p", "qs-image-section-description", t("Choose the model in Settings → Models → Image generation. Choose a model instead of Off to enable image generation.")));
+    model.body.append(el("p", "qs-image-section-description", t("Pick the model in Settings → Models → Image generation. Picking any model there instead of Off turns image generation on.")));
     model.actions.append(choose);
     const check = el("button", "text qs-image-check", t("Check image tool")); check.type = "button";
     const result = el("div", "qs-image-result"); result.setAttribute("aria-live", "polite");

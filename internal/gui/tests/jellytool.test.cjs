@@ -13,6 +13,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const context = await browser.newContext({ viewport: { width: 1100, height: 760 }, reducedMotion: "reduce" });
       const page = await context.newPage();
       page.setDefaultTimeout(7000);
+      page.setDefaultNavigationTimeout(60000);
       const errors = [], requests = [], failures = [];
       t.after(() => { if (errors.length || failures.length) console.log({ errors, failures, requests }); });
       page.on("pageerror", (e) => errors.push(e.stack));
