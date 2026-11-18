@@ -220,8 +220,15 @@ func latestFrom(ctx context.Context, feed, lang string) (*Release, error) {
 	if parse(r.Version) == nil {
 		return nil, fmt.Errorf("update feed: no version")
 	}
-	if err := r.verify(); err != nil {
-		return nil, fmt.Errorf("update feed: %w", err)
+	// A signature vouches for the assets an update installs. Jellytool
+	// installs nothing (it opens the release page, whose address is checked
+	// below), and its releases can't carry magpie's signature: a release
+	// with no assets is taken unsigned there. One that names assets is
+	// verified as magpie's are, so nothing unsigned is ever installed.
+	if !product.Jellytool || len(r.Assets) > 0 || r.Signed != nil {
+		if err := r.verify(); err != nil {
+			return nil, fmt.Errorf("update feed: %w", err)
+		}
 	}
 	if product.Jellytool {
 		page, err := url.Parse(r.URL)

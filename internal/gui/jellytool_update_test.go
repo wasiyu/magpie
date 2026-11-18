@@ -92,9 +92,15 @@ func TestJellytoolUpdateDownloadPage(t *testing.T) {
 	if s := settings.Load(); s.UpdateEvery != 1440 {
 		t.Fatalf("default check interval: %d", s.UpdateEvery)
 	}
+	// equal and older versions, each as a first answer: once a newer one
+	// was found, a feed that goes back is taken as behind and the newer one
+	// stands (run's same-channel rule)
 	for _, version := range []string{"0.1.0", "0.0.9"} {
 		rel.Version = version
 		release.Store(rel)
+		updates.mu.Lock()
+		updates.latest = nil
+		updates.mu.Unlock()
 		if j := post("/api/update/check"); j.State != "latest" {
 			t.Fatalf("equal/older release offered: %+v", j)
 		}
