@@ -37,7 +37,7 @@ func jellytoolFixture(t *testing.T) http.Handler {
 	t.Cleanup(func() { plugin.UseCached(nil); provider.Changed() })
 	gw := gateway.New()
 	t.Cleanup(func() { served.Store(nil) })
-	return Handler(webHost{}, gw)
+	return webPageHandler(t, webHost{}, gw)
 }
 
 func TestJellytoolAdmission(t *testing.T) {
