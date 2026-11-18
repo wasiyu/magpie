@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,6 +20,22 @@ var jellytoolAuthMu sync.Mutex
 var jellytoolCatalog struct {
 	sync.RWMutex
 	providers []Provider
+	// key is jellytoolKey when providers was read: a catalog read under
+	// another key (replaced, or signed out) is never lent to this one
+	key uint64
+}
+
+// jellytoolKey counts the bundled account's key changes: a save, an API
+// key or a sign-out. Each refresh after one starts from no catalog.
+var jellytoolKey atomic.Uint64
+
+// jellytoolListRefused says a failed list was the vendor's answer about
+// the key (HTTP 401 or 403, or a business error in the reply), not a
+// failure to ask: a timeout, a dropped connection, a 429 or a 5xx says
+// nothing about what the key may use. The plugin words its errors as
+// catalog() in jellytoken/index.js does.
+func jellytoolListRefused(said string) bool {
+	return strings.Contains(said, "HTTP 401") || strings.Contains(said, "HTTP 403") || strings.Contains(said, "business error")
 }
 
 // ActivateJellytool connects the existing provider adapter to the verified
@@ -65,6 +82,7 @@ func JellytoolConnection(ctx context.Context, in map[string]any) (map[string]any
 		return nil, err
 	}
 	if in["action"] == "save" {
+		jellytoolKey.Add(1)
 		generation.Add(1)
 		changed()
 		_, _ = refreshJellytoolLocked(ctx)
@@ -93,27 +111,45 @@ func refreshJellytoolLocked(ctx context.Context) ([]Provider, error) {
 	if p == nil {
 		return nil, errHostGone
 	}
+	key := jellytoolKey.Load()
 	ps, err := p.Providers(ctx)
 	if p != jellytoolActive.Load() {
 		return nil, errHostGone
 	}
+	if err == nil && (len(ps) != 1 || ps[0].ID != "jellytoken") {
+		err = errors.New("unexpected Jellytool provider")
+	}
 	if err != nil {
-		// A failed authorization read must not lend the previous key's catalog
-		// to the supplier picker or its save boundary.
+		// The host itself failed to answer: what the key may use is
+		// unknown. The last good catalog read under this same key is kept
+		// (the vendor still refuses whatever the key may not use); one
+		// read under another key is never lent to this one.
 		jellytoolCatalog.Lock()
-		jellytoolCatalog.providers = nil
+		if jellytoolCatalog.key != key {
+			jellytoolCatalog.providers = nil
+		}
 		jellytoolCatalog.Unlock()
 		listed()
 		return nil, err
 	}
-	if len(ps) != 1 || ps[0].ID != "jellytoken" {
-		return nil, errors.New("unexpected Jellytool provider")
-	}
 	if ps[0].FellBack || ps[0].ListError != "" {
-		ps[0].Models = nil // A fallback list is not a key authorization result.
+		// A fallback list is not a key authorization result. A refusal
+		// (401/403) takes the catalog away; a list that could not be read
+		// (timeout, 5xx) keeps the last good one of this key, so a moment's
+		// outage doesn't turn every agent's request into an unknown model.
+		jellytoolCatalog.Lock()
+		kept := jellytoolCatalog.key == key && !jellytoolListRefused(ps[0].ListError) &&
+			len(jellytoolCatalog.providers) == 1 && len(jellytoolCatalog.providers[0].Models) > 0
+		if !kept {
+			ps[0].Models = nil
+			jellytoolCatalog.providers, jellytoolCatalog.key = ps, key
+		}
+		jellytoolCatalog.Unlock()
+		listed()
+		return jellytoolCached(), nil
 	}
 	jellytoolCatalog.Lock()
-	jellytoolCatalog.providers = ps
+	jellytoolCatalog.providers, jellytoolCatalog.key = ps, key
 	jellytoolCatalog.Unlock()
 	listed()
 	return jellytoolCached(), nil
@@ -132,6 +168,7 @@ func jellytoolAPIKey(ctx context.Context, provider string, method int, key strin
 	if err := p.APIKey(ctx, key); err != nil {
 		return Saved{}, err
 	}
+	jellytoolKey.Add(1)
 	generation.Add(1) // LoaderOptions must not retain a replaced key's loader.
 	changed()
 	if _, err := refreshJellytoolLocked(ctx); err != nil {
@@ -175,6 +212,7 @@ func jellytoolCall(ctx context.Context, method string, params, out any) error {
 		return err
 	}
 	if method == "signOut" {
+		jellytoolKey.Add(1)
 		generation.Add(1)
 		changed()
 		_, err = refreshJellytoolLocked(ctx)

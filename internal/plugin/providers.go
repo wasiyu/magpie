@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -350,9 +351,12 @@ func Providers(ctx context.Context) ([]Provider, error) {
 		ps = commitProviders(ps, nil)
 	}
 	if product.Jellytool {
+		// the bundled provider failing to answer leaves the other plugins
+		// listed, and Jellytoken with what it last told (jellytoolCached)
 		jps, err := refreshJellytool(ctx)
 		if err != nil {
-			return nil, err
+			log.Printf("plugin: Jellytoken's list: %v", err)
+			jps = jellytoolCached()
 		}
 		ps = append(jps, ps...)
 	}

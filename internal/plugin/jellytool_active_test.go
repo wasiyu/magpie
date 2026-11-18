@@ -26,10 +26,14 @@ func TestJellytoolActiveAdapter(t *testing.T) {
 		t.Fatal(err)
 	}
 	requests := make(chan string, 20)
-	var catalogDenied atomic.Bool
+	var catalogDenied, catalogDown atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if catalogDenied.Load() && r.URL.Path == "/v1/models" {
 			w.WriteHeader(403)
+			return
+		}
+		if catalogDown.Load() && r.URL.Path == "/v1/models" {
+			w.WriteHeader(503)
 			return
 		}
 		if r.Header.Get("Authorization") != "Bearer fixture-key" {
@@ -127,6 +131,17 @@ func TestJellytoolActiveAdapter(t *testing.T) {
 	if ps := jellytoolCached(); len(ps) != 1 || len(ps[0].Models) != 1 {
 		t.Fatalf("retry did not recover catalog: %+v", ps)
 	}
+	// A list that could not be read (the vendor down for a moment) says
+	// nothing about the key: the last good catalog of the same key stays,
+	// for the gateway and the picker alike.
+	catalogDown.Store(true)
+	if _, err := refreshJellytool(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if ps := jellytoolCached(); len(ps) != 1 || len(ps[0].Models) != 1 {
+		t.Fatalf("an outage took the catalog away: %+v", ps)
+	}
+	catalogDown.Store(false)
 	if err := SignOut(ctx, "jellytoken", "jellytoken"); err != nil {
 		t.Fatal(err)
 	}
