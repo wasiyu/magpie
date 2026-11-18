@@ -150,7 +150,7 @@ func (h *jellytoolWindow) setupJellytoolTray(version string) {
 	ver := menu.Add("").SetEnabled(false)
 	quit := menu.Add("").OnClick(func(*application.Context) { h.app.Quit() })
 	relabel := func() {
-		labels := trayMenuLabels(trayLang(settings.Load().Lang, systemLang), version, "")
+		labels := trayMenuLabels(trayLang(settings.Load().Lang, systemLang), version, "", false) // Jellytool's tray has no Pause item
 		open.SetLabel(strings.ReplaceAll(labels.open, "magpie", "Jellytool"))
 		ver.SetLabel(labels.version)
 		quit.SetLabel(strings.ReplaceAll(labels.quit, "magpie", "Jellytool"))
