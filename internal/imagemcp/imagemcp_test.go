@@ -217,7 +217,7 @@ func TestGenerateForwardsExplicitModel(t *testing.T) {
 		t.Fatalf("image tool does not advertise model: %v", props)
 	}
 	for _, edit := range []bool{false, true} {
-		args := map[string]any{"prompt": "a city", "model": "jellytoken/gpt-image-2", "size": "1536x1024"}
+		args := map[string]any{"prompt": "a city", "model": "art/painter", "size": "1536x1024"}
 		if edit {
 			args["reference_images"] = []string{"data:image/png;base64," + base64.StdEncoding.EncodeToString(png)}
 		}
@@ -234,7 +234,7 @@ func TestGenerateForwardsExplicitModel(t *testing.T) {
 	for _, raw := range g.body {
 		var body map[string]any
 		json.Unmarshal([]byte(raw), &body)
-		if body["model"] != "jellytoken/gpt-image-2" || body["size"] != "1536x1024" {
+		if body["model"] != "art/painter" || body["size"] != "1536x1024" {
 			t.Fatalf("explicit model and size lost: %s", raw)
 		}
 	}

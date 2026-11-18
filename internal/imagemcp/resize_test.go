@@ -11,6 +11,7 @@ import (
 	"image/gif"
 	"image/jpeg"
 	pngenc "image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +19,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/yetone/magpie/internal/gateway"
 )
 
 // The middle square is translucent green; stretching instead of cropping
@@ -65,13 +68,18 @@ func TestGenerateSavesExactSize(t *testing.T) {
 					fetchLocal(t)
 				}
 				g := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == gateway.ImageMCPPath {
+						b, _ := io.ReadAll(r.Body)
+						modelsMCP(w, b)
+						return
+					}
 					var req map[string]any
 					json.NewDecoder(r.Body).Decode(&req)
 					endpoint := "/v1/images/generations"
 					if edit {
 						endpoint = "/v1/images/edits"
 					}
-					if r.URL.Path != endpoint || req["size"] != "16x16" || req["model"] != "jellytoken/gpt-image-2" || req["n"] != float64(2) || req["response_format"] != "b64_json" {
+					if r.URL.Path != endpoint || req["size"] != "16x16" || req["model"] != "art/painter" || req["n"] != float64(2) || req["response_format"] != "b64_json" {
 						t.Errorf("request changed: %s %v", r.URL.Path, req)
 					}
 					var data []map[string]string
@@ -82,11 +90,11 @@ func TestGenerateSavesExactSize(t *testing.T) {
 						}
 						data = append(data, d)
 					}
-					json.NewEncoder(w).Encode(map[string]any{"model": "jellytoken/gpt-image-2", "data": data})
+					json.NewEncoder(w).Encode(map[string]any{"model": "art/painter", "data": data})
 				})
 				project := t.TempDir()
 				c := initialized(t, g, project)
-				a := map[string]any{"prompt": "green square", "size": "16x16", "path": "image.png", "model": "jellytoken/gpt-image-2", "n": 2}
+				a := map[string]any{"prompt": "green square", "size": "16x16", "path": "image.png", "model": "art/painter", "n": 2}
 				if edit {
 					a["reference_images"] = []string{"data:image/png;base64," + base64.StdEncoding.EncodeToString(images[0])}
 				}
@@ -164,6 +172,11 @@ func TestResizeReportedDimensions(t *testing.T) {
 func TestGenerateRejectsUnsafeSizeBeforeDrawing(t *testing.T) {
 	var calls atomic.Int32
 	g := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == gateway.ImageMCPPath {
+			b, _ := io.ReadAll(r.Body)
+			modelsMCP(w, b)
+			return
+		}
 		calls.Add(1)
 		w.WriteHeader(http.StatusBadRequest)
 	})
