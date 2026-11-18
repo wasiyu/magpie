@@ -70,9 +70,16 @@ func jellytoolHost() (*host, error) {
 
 // JellytoolConnection manages only the bundled provider. Its private hook
 // validates before committing one auth/config record; probes save nothing.
+//
+// Only a save takes jellytoolAuthMu: it replaces the account and the
+// catalog read from it. A detect sends up to five probes for each of up to
+// 24 models (over 40s) and saves nothing, and config reads only; held for
+// them, every catalog refresh and with it the provider list waited.
 func JellytoolConnection(ctx context.Context, in map[string]any) (map[string]any, error) {
-	jellytoolAuthMu.Lock()
-	defer jellytoolAuthMu.Unlock()
+	if in["action"] == "save" {
+		jellytoolAuthMu.Lock()
+		defer jellytoolAuthMu.Unlock()
+	}
 	h, err := jellytoolHost()
 	if err != nil {
 		return nil, err
