@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/update"
 )
@@ -428,6 +429,14 @@ func askedLang(r *http.Request) string {
 }
 
 func whatsNewRoutes(mux *http.ServeMux) {
+	if product.Jellytool {
+		// Jellytool's feed supplies the waiting release's notes via update/notes.
+		// It has no magpie history or post-install pop-up.
+		mux.HandleFunc("GET /api/whatsnew", func(rw http.ResponseWriter, r *http.Request) {
+			writeJSON(rw, whatsNewJSON{Current: Version, Releases: []update.Note{}})
+		})
+		return
+	}
 	mux.HandleFunc("GET /api/whatsnew", func(rw http.ResponseWriter, r *http.Request) {
 		all, lang := r.URL.Query().Get("all") != "", pageLang(r)
 		if c := backCount(r); all && c > 0 {

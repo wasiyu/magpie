@@ -371,6 +371,17 @@ the price is the own id's first (`ListPrice`). `TestModelIDListedAndAskedForByOw
 
 ## Constraints and failure behavior
 
+In the Jellytool build, official subscription providers without saved settings
+start switched off (`withPicks` in [`provider.go`](../../internal/provider/provider.go)).
+Their rows appear under Turned off and their models are not served until enabled.
+Saved on/off choices are preserved. The first Jellytoken key entered through
+the new GUI guide is saved with `NoModels` only when there is no existing
+provider choice, so adding that key alone does not complete model selection.
+Existing keys without a provider row retain their implicit vendor-list default;
+a saved selection, including explicit vendor-list mode, keeps its value.
+Other plugin-only providers and API-key providers keep their existing defaults.
+Ordinary magpie defaults are unchanged.
+
 An allowance deliberately not requested (a saved Claude account outside
 its card refresh, or allowances set to *When I ask*) can use the last
 reading with `readDeferred: true`. `AsOf` and `ReadAt` still date that

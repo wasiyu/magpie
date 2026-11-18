@@ -43,6 +43,7 @@ package agent
 // magpie's key. Not with a JetBrains IDE's own window.
 
 import (
+	"github.com/yetone/magpie/internal/product"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -172,7 +173,7 @@ func copilotJetBrainsAt(path string, installed func() bool) *Agent {
 				return copilotJBWrite(path)
 			},
 			Options: func(map[string]string) []Option {
-				return []Option{{Value: magpieID, Label: "magpie", Icon: "magpie", Note: "every magpie model in Copilot Chat's model picker"}}
+				return []Option{{Value: magpieID, Label: product.Name, Icon: "magpie", Note: "every magpie model in Copilot Chat's model picker"}}
 			},
 		}},
 	}, path)

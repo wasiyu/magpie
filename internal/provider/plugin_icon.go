@@ -12,12 +12,16 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/plugin"
+	"github.com/yetone/magpie/internal/product"
 )
 
 // PluginIcon is the icon a plugin's provider shows: the picture its plugin
 // gives it (the auth hook's icon, or package.json's magpie.icon), kept as
 // a picture given by hand is, else the one the plugin market gives it.
 func PluginIcon(pp plugin.Provider) string {
+	if product.Jellytool && pp.ID == "jellytoken" {
+		return "jellytoken"
+	}
 	if ic := pluginOwnIcon(pp.Icon); ic != "" {
 		return ic
 	}

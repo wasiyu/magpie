@@ -31,6 +31,7 @@ import (
 	"github.com/yetone/magpie/internal/lastgood"
 	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/proc"
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/settings"
 )
 
@@ -447,8 +448,10 @@ func (c *call) notify() {
 
 // host is one Bun process running host.js.
 type host struct {
-	cmd *exec.Cmd
-	in  io.WriteCloser
+	// isolated hosts never publish events into magpie's global state.
+	isolated bool
+	cmd      *exec.Cmd
+	in       io.WriteCloser
 	// out carries messages to the single writer goroutine that owns the
 	// child's stdin. A caller enqueues and returns, so it is never parked in
 	// a blocked write; the queue is bounded by the call limit, so a wedged
@@ -900,6 +903,11 @@ func (h *host) busy() bool {
 
 // Running is whether a host is up.
 func Running() bool {
+	if product.Jellytool {
+		if h, err := jellytoolHost(); err == nil && h.alive() {
+			return true
+		}
+	}
 	hostMu.Lock()
 	defer hostMu.Unlock()
 	return current != nil && current.alive()
@@ -1132,59 +1140,10 @@ func startOn(ctx context.Context, bun string) (*host, bool, error) {
 	addr := hostAddr(cmd.Env)
 	log.Printf("plugin: host starts with %s", netLine(cmd.Env))
 	cmd.Env = hostEnv(cmd.Env)
-	in, err := cmd.StdinPipe()
+	h, err := launchHost(cmd, proxy, addr, false)
 	if err != nil {
 		return nil, false, err
 	}
-	// stdout and stderr are read apart from Wait (proc.Output), so the
-	// child is reaped when it ends, whatever holds a copy of them
-	output, err := proc.NewOutput(cmd)
-	if err != nil {
-		return nil, false, err
-	}
-	// started and counted live under one lock, so EndHosts misses none
-	live.Lock()
-	if live.ended {
-		live.Unlock()
-		output.Close()
-		return nil, false, errHostsEnded
-	}
-	// in a tree of its own: what its plugins start is ended with it
-	tree, waited, err := output.StartTree(cmd)
-	if err != nil {
-		live.Unlock()
-		return nil, false, err
-	}
-	hctx, hcancel := context.WithCancel(context.Background())
-	h := &host{
-		cmd: cmd, in: in,
-		calls:    map[int64]*call{},
-		dead:     make(chan struct{}),
-		slots:    make(chan struct{}, callLimit()),
-		streams:  make(chan struct{}, streamLimit()),
-		out:      make(chan writeReq, callLimit()),
-		ctrl:     map[int64]*ctrl{},
-		ctrlWake: make(chan struct{}, 1),
-		ctx:      hctx,
-		cancel:   hcancel,
-		proxy:    proxy,
-		proxyAt:  time.Now(),
-		addr:     addr,
-		output:   output,
-		waited:   waited,
-		tree:     tree,
-	}
-	live.hosts[h] = true
-	live.Unlock()
-	go func() {
-		drainStderr(output.Err)
-		output.ErrRead()
-	}()
-
-	go h.read(output.Out)
-	go h.reap()
-	go h.writerLoop()
-	go h.ctrlLoop()
 	generation.Add(1)
 
 	l := Load()
@@ -1286,6 +1245,68 @@ func freePort() (int, error) {
 	}
 	defer l.Close()
 	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
+// launchHost starts the shared RPC and streaming machinery: the plugin
+// host and Jellytool's bundled one alike, each in a process tree of its own
+// that EndHosts ends. The bundled Jellytool entry supplies its own files and
+// never enters the global host.
+func launchHost(cmd *exec.Cmd, proxy, addr string, isolated bool) (*host, error) {
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	// stdout and stderr are read apart from Wait (proc.Output), so the
+	// child is reaped when it ends, whatever holds a copy of them
+	output, err := proc.NewOutput(cmd)
+	if err != nil {
+		return nil, err
+	}
+	// started and counted live under one lock, so EndHosts misses none
+	live.Lock()
+	if live.ended {
+		live.Unlock()
+		output.Close()
+		return nil, errHostsEnded
+	}
+	// in a tree of its own: what its plugins start is ended with it
+	tree, waited, err := output.StartTree(cmd)
+	if err != nil {
+		live.Unlock()
+		return nil, err
+	}
+	hctx, hcancel := context.WithCancel(context.Background())
+	h := &host{
+		cmd: cmd, in: in,
+		calls:    map[int64]*call{},
+		dead:     make(chan struct{}),
+		slots:    make(chan struct{}, callLimit()),
+		streams:  make(chan struct{}, streamLimit()),
+		out:      make(chan writeReq, callLimit()),
+		ctrl:     map[int64]*ctrl{},
+		ctrlWake: make(chan struct{}, 1),
+		ctx:      hctx,
+		cancel:   hcancel,
+		proxy:    proxy,
+		proxyAt:  time.Now(),
+		addr:     addr,
+		output:   output,
+		waited:   waited,
+		tree:     tree,
+		isolated: isolated,
+	}
+	live.hosts[h] = true
+	live.Unlock()
+	go func() {
+		drainStderr(output.Err)
+		output.ErrRead()
+	}()
+
+	go h.read(output.Out)
+	go h.reap()
+	go h.writerLoop()
+	go h.ctrlLoop()
+	return h, nil
 }
 
 // pluginLoadWait bounds one plugin's load in the host, and
@@ -1434,6 +1455,9 @@ func readLine(r *bufio.Reader, max int) ([]byte, error) {
 
 func (h *host) dispatch(m message) {
 	if m.ID == 0 {
+		if h.isolated && m.Event != "renewing" && m.Event != "log" && m.Event != "toast" {
+			return
+		}
 		switch m.Event {
 		case "auth":
 			changed()
@@ -1886,7 +1910,15 @@ func (h *host) call(ctx context.Context, method string, params, out any) error {
 
 // Call starts the host if need be and asks it method.
 func Call(ctx context.Context, method string, params, out any) error {
+	if product.Jellytool && jellytoolParams(params) {
+		return jellytoolCall(ctx, method, params, out)
+	}
 	return callWithTimeout(ctx, method, params, out, 0)
+}
+
+func jellytoolParams(params any) bool {
+	m, ok := params.(map[string]any)
+	return ok && m["provider"] == "jellytoken"
 }
 
 // Background listings allow the host its own startup budget. The optional
@@ -2118,6 +2150,13 @@ func hostEnv(env []string) []string {
 // Fetch sends r through the provider's plugin — its loader's fetch, or
 // Bun's own when it gives none — and streams back the reply.
 func Fetch(ctx context.Context, r FetchRequest) (*http.Response, error) {
+	if product.Jellytool && r.Provider == "jellytoken" {
+		p := jellytoolActive.Load()
+		if p == nil {
+			return nil, errHostGone
+		}
+		return p.Fetch(ctx, r)
+	}
 	if err := netproxy.Held(ctx); err != nil {
 		return nil, err
 	}
@@ -2125,6 +2164,10 @@ func Fetch(ctx context.Context, r FetchRequest) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	return h.fetch(ctx, r)
+}
+
+func (h *host) fetch(ctx context.Context, r FetchRequest) (*http.Response, error) {
 	if r.Proxy == "" {
 		r.Proxy = proxyOf(ctx)
 	}

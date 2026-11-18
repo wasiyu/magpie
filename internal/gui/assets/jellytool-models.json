@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "tiers": {
+    "complex": [
+      {
+        "id": "gpt-6-astra",
+        "recommended": true,
+        "alwaysShow": true
+      },
+      {
+        "id": "glm-5.3"
+      },
+      {
+        "id": "qwen3.8-max"
+      },
+      {
+        "id": "doubao-seed-2-1-pro"
+      },
+      {
+        "id": "kimi-k3.1-pro"
+      },
+      {
+        "id": "deepseek-v4-pro-0813"
+      }
+    ],
+    "daily": [
+      {
+        "id": "gpt-6.1-sol",
+        "recommended": true,
+        "alwaysShow": true
+      },
+      {
+        "id": "glm-5.3-flash"
+      },
+      {
+        "id": "qwen3.7-plus"
+      },
+      {
+        "id": "doubao-seed-2.0-lite"
+      },
+      {
+        "id": "deepseek-v4.1-flash-1017"
+      }
+    ],
+    "simple": [
+      {
+        "id": "gpt-6.1-terra",
+        "recommended": true,
+        "alwaysShow": true
+      },
+      {
+        "id": "gpt-6-luna",
+        "recommended": true,
+        "alwaysShow": true
+      },
+      {
+        "id": "qwen3.8-flash"
+      },
+      {
+        "id": "doubao-seed-2.0-mini"
+      }
+    ]
+  }
+}

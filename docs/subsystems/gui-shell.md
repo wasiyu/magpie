@@ -799,7 +799,7 @@ covers it in both engines, every language and a narrow window.
 - The Providers page has a search box over its list (#1614, `findProviders` in [`app.js`](../../internal/gui/assets/app.js)): the words typed keep the rows, on and off, whose text or data say them all: name, id, preset, addresses, every model's id and name, the account's user and plan and each login's, account names and key names. The Turned off fold stays open while searching; Escape or clearing the box shows every row and the fold as it was. A row that is on reorders by dragging its logo, Alt+↑/↓, Alt+Shift+↑/↓ (top, bottom) or its right-click menu (`openProviderMenu`: Move to top, Move up, Move down, Move to bottom). While searching, a step or a drop moves it among the rows shown (it takes the place of the row it passes, `stepProvider`, `shownToOn`) and the hidden ones keep their order; Move to top and Move to bottom go to the ends of the whole list. Every move saves the whole order through `POST /api/providers/arrange`. See `provider-find.test.cjs` and `provider-order.test.cjs`.
 - Providers are removed several at once from Select, beside the search box (`#pvSelect`, shown with two providers or more; eiyuuzaki2333 on X). Picking (`pvSel` in [`app.js`](../../internal/gui/assets/app.js); `pickedProviderRow`, `pvSelBar` and `removePicked` in [`pvpick.js`](../../internal/gui/assets/pvpick.js), imported when Select is first clicked, so the core carries only the button and two lines in `renderProviders`) puts a box on every row, takes the handle and switch away and opens no editor: a click on a row picks it, Shift picks the rows shown between, and the bar's box picks every row shown (a search narrows it; the closed Turned off fold's rows are not shown). Remove asks once, in the app's own dialog (`confirmAction`), with the count and every name, and posts `POST /api/providers/delete {ids}` (`providerRoutes` in [`providers.go`](../../internal/gui/providers.go)). That runs `provider.Delete` for each id, as the editor's Remove does, inside one `agent.Reseat`, so agents move once, to where they end up. A provider it can't remove comes back in `unremoved` with why, stays picked and is named in the status; it is refused only when nothing was removed. Done, Escape or a removal that leaves nothing picked ends picking. See `provider-bulk-remove.test.cjs` and `TestProvidersDeleteSeveral`.
 - Hide accounts (`window.hideAccounts` at the end of [`app.js`](../../internal/gui/assets/app.js)) masks every account name and address in the window's text and tooltips, its menus and dialogs too, by one switch for the whole window and the tray panel. Routing's, Usage's and Providers' buttons (`#rtMask`, `#usageMask`, `#pvMask` beside Providers' search box) and Settings › Privacy's row are that one switch, stored in `magpie.maskEmails`: turned on any page, every page is hidden and every button says so, and another window or the panel follows through the `storage` event (paultian in #feedback: Providers had a switch of its own, so one page was hidden while another wasn't). A `magpie.maskProviders` left by the versions that had Providers' own switch is folded in once and removed: hidden on either page then is hidden everywhere now. While it is not chosen, it follows Mask personal data, and turning that on turns it on (`provider-mask.test.cjs`). While it is on, an account's name on the provider editor's row (`accountNameButton`, and the one-account line) and on its Usage card (`quotaWho`), and on the tray panel's Usage card (`panelQuotaCard`'s `.pq-who`, in sight while the card is hovered), has an eye (`hideAccounts.eye`), in sight on hover or keyboard focus. A click shows that one account, its address and the name the user gave it together (`kin`), everywhere that page draws it, tooltips included, while the others stay hidden (yogurt36 on Discord, for a screen share). The accounts shown are a set held in memory that `hits()` skips; nothing stores them. The window and the panel are pages of their own, each with its own set: one shown in the window stays hidden in the panel and the other way round, so a screenshot of either shows only what was shown there. Closing the window hides them again: the page stays loaded while the window is hidden, so `hideMain` runs `mainClosedJS` (`hideAccounts.closed`) first. Putting the panel away hides the panel's again, from its `visibilitychange` (the one that drops `panelPeek`) (`account-eye.test.cjs`, `TestClosingHidesShownAccounts`). What it hides is the accounts: their addresses, their vendors' values (`user`, `account`, Routing's `who`) and a name that stands for one, a plugin's (`accountUsers`, a card's `alias` without `named`) or a seat's. The name the user gave an account (`AccountNames`; a card's `alias` with `named`, which `withAccountNames` sets) is no account and stays in sight, beside the account it names, hidden (faketrader in #3656: several accounts couldn't be told apart). A label is scoped by its element, never by its value: in the user's own name (`.own-name`), a plan (`.plan`, the Providers row's `.acct-plan`), a model (`.model-value`) and a Usage card's title (`.subscription-head > b`) only an address is hidden, so an Antigravity account whose value is "Google" leaves "Google AI Pro" readable while an address written in a plan is still hidden; the same holds for the tooltips of plans and models (`TIPS`), not for the own name's, which says the account (`LABELS` in app.js, `account-mask-alias-plan.test.cjs`). The tray panel card's tooltip joins the account and the plan in one string, and still hides a plan's word that is an account's value.
-- A new user's Agents page (the window's first page and the panel's Agents tab) has a *Get started* card above the agents in the welcome's place (wangye1644294 on X, `guideCard` in [`app.js`](../../internal/gui/assets/app.js)). Its three steps are: add a model source; connect an agent, where the agents magpie found that can be connected are named and each is connected in one click (`agents/connect`); and, optional, a routing group, with the most harmless starter template that can be made from the user's models (`provider.Templates`, Never stuck first) added in one click through `POST /api/groups/template`. Every tick comes from the state: the models magpie serves (`served` in `/api/state`, groups left out), an agent wired, or a group that isn't automatic. None comes from the card having been seen. The card goes once the first two steps are done. Its close button saves `settings.GuideHidden` through `POST /api/settings/guide`, so the panel, the window and a reload agree, and the Settings save keeps it. Hiding it says where it comes back: Settings › General has a *Get started* row with Show while it is hidden and setup isn't done (`guideback.js`, imported by `navpages.js`; `getting-started.test.cjs`). See `getting-started.test.cjs`.
+- The window has a separate *Get started* navigation page (`quickstart`, `renderQuickstart` in [`app.js`](../../internal/gui/assets/app.js)). It always shows three required steps, in order: connect a provider, select models, and connect an agent. Opening the page or returning focus rereads `/api/state` and `/api/providers`, without opening provider editors or changing configuration. The same provider read updates the sidebar gateway status, so opening the sidebar reuses it. Provider readiness requires `ready`, excluding switched-off or signed-out providers; a cached model count cannot establish a source. Model selection requires an active source and positive `served` (routing groups left out). Agent completion independently requires an agent wired, even if its source has signed out. While checking, a status notice is shown; a failed read marks completion unknown, removes the check icons and offers retry while retaining configuration actions. A response from an earlier visit or before a saved edit cannot overwrite newer state. Each completed step keeps its title, current-state details, check icon and configuration action. Model selection opens the sole ready provider directly, or the Providers page when several are available; opening an action alone saves no configuration. Routing is configured on its own page and has no step, template or completion requirement here. On a normal window launch with any step incomplete, Get started takes priority over the last remembered page; an explicit `?view=` link retains its target. Later refreshes keep the reader on the page they chose. The compact panel keeps its dismissible card on the Agents tab (`guideShown`): completion or `settings.GuideHidden`, saved through `POST /api/settings/guide`, removes only that card. The permanent navigation page ignores that dismissal. See `getting-started.test.cjs`.
 - A connected agent's row in the window opens and closes on a click anywhere on it that isn't one of its controls, as a disclosure row does on the Mac (NG_shiyu on X, `connectRow` in [`app.js`](../../internal/gui/assets/app.js)): the click is handed to the row's *Models {n}* link (`expandLink`), which stays the control the keyboard and a screen reader use and keeps `aria-expanded`. Buttons, links, inputs, anything with a role, the grip and the opened sheet (`.ag-exp`) keep their own clicks, and a click that ends a text selection does nothing. The panel's rows did this already (`agent-row-disclose.test.cjs`).
 - An agent whose own model menu is the list picked in magpie (ZCode, Claude Desktop, Cursor Private Inference, …: `listsMenu`) says that list as its ticks are, on its button and on the panel row (`menuSaid` in [`app.js`](../../internal/gui/assets/app.js)): every model ticked is *All N models*, one or two by their names, more as *Showing x / N models*, none as *No models*. It never says the first names and a +N: routing groups come first, so that read as a pick of one group and one model while every model was on (NG_shiyu on X). Other agents' start pickers still say the one model or group they start on (`agent-menu-label.test.cjs`).
 - Every page of the window keeps to one width, at most 1200px of content centred, with a 16px gutter in a narrow window (`padding: max(16px, calc(50% - 600px))` on each `#view-…`, #860). Routing, Usage and Sessions are in that rule too (面条 on Discord), so a large screen doesn't stretch them edge to edge while the others sit in the middle; their columns follow the room they get (`byWidth`). See `page-width.test.cjs`.
@@ -851,6 +851,10 @@ its own tab, it has none. Escape does the same while the button shows and
 nothing on the page takes it: not in a field, nor with a group's editor,
 Import or Select open, nor under a modal. The app has no ⌘[ anywhere, so
 none here (`routing-groups-back.test.cjs`).
+When closing finishes, focus returns to the opener only if it remains in the
+closing modal or on the document body. A control the reader already focused
+outside the modal keeps focus; completing an animation must not interrupt new
+typing or keyboard navigation. The same rule applies to the Add sheet's focus.
 The page's New group goes through `newGroup`, which asks before replacing a
 dirty group draft; Cancel retains the draft and Discard opens the new editor.
 `newGroupWith` applies the same guard when creating a group from a model and
@@ -1573,3 +1577,392 @@ saves, narrow layouts and all five languages in Chromium and WebKit.
 
 - The Gateway page's card opens DeepSeek's chat page (Chat page, `gw-chat` in `plugins/gateway/client.js`) at the gateway's address, or `MAGPIE_PUBLIC_URL`'s on a page other machines open, through `/api/open`, while the gateway runs and isn't paused. It sits with Restart gateway in one `.gw-acts`, so a narrow card wraps the two together. See [gateway routing](gateway-routing.md#deepseeks-chat-page) and `gateway-chat-page.test.cjs`.
 - A gateway port another program holds names that program (pluoki on X). `gateway.NoteHeld` reads the holder with `proc.PortHolder` (lsof on the Mac, /proc on Linux, Get-NetTCPConnection on Windows) and, when the daemon is root's and unreadable, falls back to `tailscale serve status --json` for the port. Tailscale's line carries `tailscale serve --https=<other> http://127.0.0.1:<port>`. The sentence (`PortHeld.Sentence`) goes to the `magpie serve` standby line and bind error, the app's log, `gatewayHeld` in `/api/state` (Gateway page) and Start's `taken` answer. A holder that can't be read says nothing, and the old wording stands. Nothing is killed or touched. See `TestWhoHolds`, `TestListenErrorNamesTheHolder`, `TestPortHolderNamesTheProgram` and `gateway-port-holder.test.cjs`.
+
+## Jellytool build
+
+### Jellytool download notices
+
+Jellytool reuses [`updater`](../../internal/gui/update.go), its `/api/update`,
+`/api/update/check`, `/api/update/notes` and `/api/update/install` routes, SemVer
+comparison, translated release notes, header button, version row, and existing
+`UpdateSkip` / `NoUpdatePill` preferences. Its separate native entry starts the
+same check loop with the app's context and joins it on shutdown. It checks after
+startup and, by default, every 24 hours while running; `NoAutoUpdate` disables
+scheduled checks, while Settings' Check still works.
+An open page reads the local update state every 30 seconds, so a background
+result appears without refocusing the window. Routine polls use the cached
+result; changing the UI language can refresh the release notes through the
+shared language-refresh logic.
+
+In a Jellytool build, `place` never chooses an executable or bundle to replace,
+the check stops at `available`, and `install` refuses self-installation. The
+download action shows the existing release-notes dialog with Download and Later;
+Download opens the feed's HTTPS release page in the system browser. It never
+fetches an asset, installs on quit, or restarts the app. Automatic downloading,
+restart, channel and mirror controls, and magpie's release history are omitted.
+`GET /api/whatsnew` returns no history; `/api/update/notes` uses only the release
+already read from the Jellytool feed. A failed check remains an error with the
+last good release retained, never an 'up to date' result.
+
+[`update.Feed`](../../internal/update/update.go) uses the build's `JellytoolFeed`,
+or `JELLYTOOL_UPDATE_FEED` for a local override. It ignores `MAGPIE_UPDATE_FEED`
+and never falls back to usemagpie.ai. An empty feed is `unconfigured`, shown as
+such in About without contacting a service. A response uses the existing
+Release JSON with `product: "jellytool"`, a SemVer `version`, `notes` (Markdown,
+optionally split by `<!-- lang:zh -->`), and an HTTPS `url` without credentials.
+`assets` is unnecessary. A response identifying another product or naming an
+invalid page is rejected.
+
+[`package.py`](../../build/jellytool/package.py) accepts `--version` and
+`--update-feed`; release versions require an HTTPS feed. It stamps the same
+version into `main.version` and both plist version fields. Local builds default
+to `dev` (plist `0.0.0`) with no feed. [`run.py`](../../build/jellytool/run.py)
+passes these options through. Publishing/hosting the JSON and download page is
+a separate deployment; no production endpoint is assumed by the packager.
+
+For example, host a JSON file like this at the configured feed URL (the
+`downloads.example` addresses below are placeholders):
+
+```json
+{
+  "product": "jellytool",
+  "version": "0.2.0",
+  "notes": "- Improved model selection\n<!-- lang:zh -->\n- 改善模型选择",
+  "url": "https://downloads.example/jellytool/0.2.0"
+}
+```
+
+Build the current version against that file, then publish a newer `version`
+only after its download page and complete application package are available:
+
+```sh
+python3 build/jellytool/package.py --bun /absolute/bun \
+  --output /new/Jellytool.app --version 0.1.0 \
+  --update-feed https://downloads.example/jellytool/latest.json
+```
+
+The offline regression checks are `TestJellytoolUpdate*`,
+`TestJellytoolFeedIdentity`, [`jellytool-update.test.cjs`](../../internal/gui/tests/jellytool-update.test.cjs)
+(both engines, five languages, wide/narrow), and
+[`test_package.py`](../../build/jellytool/test_package.py).
+
+### Jellytool shell and models
+
+The `jellytool` build uses [`RunJellytool`](../../internal/gui/jellytool_app.go),
+a separate native window and lifetime, instead of Run. It starts the normal
+backend and shares magpie's page scripts and Settings API through
+[`jellytoolHandler`](../../internal/gui/jellytool.go), with additional Jellytoken
+connection routes and product-specific [page controls](../../internal/gui/assets/jellytool.js).
+The current wrapper retains the normal feature set; the earlier restricted
+P1 implementation is recorded in [its historical report](../plans/jellytool-plugin-p1.md).
+The download-only update behavior above is enforced in the shared updater and
+routes, independently of what settings were copied into the product's data root.
+
+
+Jellytool's recommendation picker lives only in Get started's model step.
+Its Recommendations and Selected tabs share one local selection. Each model is
+a card with its name, a short suggested use and an upper-right selection mark.
+Selected includes picks from the full directory and permits removal. The count,
+tab keyboard controls and card focus survive redraws. Each category has one bulk-action
+button, labeled Select available models until its permitted models are selected,
+then Clear. Clear removes only that category's IDs, retaining other categories
+and directory-only choices. Labels are the same for full and partial access,
+and keyboard focus stays on the control. Metadata can update the control's label
+without replacing a card during an active click. Details/evidence disclosures are
+omitted. Locally bundled Phosphor brain/code/lightning line icons and shallow themed
+backgrounds distinguish the categories. Card selectors use the app's vector
+check mark inside a refined rounded frame, with selected/hover/focus states. Compact cards reserve three description
+lines with full text available in the tooltip. Reviewed card summaries come from
+the marketplace Basic information, keyed to exact model IDs; records not in that
+public source retain neutral task suggestions. Sources and review date are in
+[model-card sources](../plans/jellytool-model-card-sources.md). The existing theme
+and font apply in both modes.
+
+Browse more models opens Jellytoken's original complete model picker on Providers
+in a focused model-only editor. `renderModels` uses its selection-only mode there,
+retaining search, bulk selection and the list while leaving connection, serving
+modes, model metadata and diagnostic controls in the ordinary supplier editor. `jellytoolProviderEditor` supplies that editor
+only for a selection session originating in Get started; a direct supplier visit
+keeps its usual editor. Back to recommendations carries all unsaved picks back,
+including the current tab. Reopening the directory uses that same selection.
+Save selection commits the complete set once and waits for authoritative provider
+and state reads before closing, so a quick reopening uses the saved picks. Late
+price metadata updates do not replace an active card; the next user action uses
+the updated ordering. Save returns to Get started, locates the collapsed model
+step near the top of the view and focuses Choose models. Both recommendation and
+directory saves do this after the saved state has been read. The model step
+shows saved model names in wrapping labels, including directory-only choices;
+background reads update this list even when the selection count stays the same.
+Failed saves retain the draft for retry and leave the saved labels unchanged.
+Cancel discards the session and returns to the saved
+choices, using the existing discard confirmation when the directory is dirty.
+`jellytoolCancelModels` handles that editor's Cancel/Escape/backdrop paths. Direct
+supplier saves continue to stay on Providers. Navigation alone never saves or
+edits an Agent.
+
+`GET /api/jellytool/models` supplies the current authorized catalog and price
+metadata. GPT-6 Astra/Luna and GPT-6.1 Sol/Terra are the default fixed recommendations: Astra
+uses complex problems, Sol everyday work and coding, and both Terra and Luna
+simple tasks. Each carries a Recommended badge even when the current key has
+no access. Key access is determined only by exact IDs in the private plugin's
+`GET /api/jellytool/models` catalog response. The supplier editor's model array
+is not an access source: it also includes saved IDs absent from the vendor list.
+Selection waits for the catalog read. A failed read or `catalogError` leaves
+access unknown and asks the user to refresh, rather than saying it is denied.
+Clicking an unavailable card shows a toast asking the user to enable model
+access in Jellytoken. Bulk selection skips unavailable IDs with the same toast;
+its labels are always Select available models and Clear, so partial access
+never claims every displayed card is selected.
+Displaying a recommendation grants no access, and saving still validates the
+complete selection against the authorized catalog. Recommendation badges use
+an opaque accent background, contrasting text and a star.
+
+The [configuration reader](../../internal/gui/jellytool_model_config.go) uses default results stored in [`jellytool-models.json`](../../internal/gui/assets/jellytool-models.json).
+On first startup, Jellytool copies them atomically to `model-recommendations.json`
+in `appdir.Config()`; existing files, even malformed ones, are never replaced.
+`GET /jellytool-model-config.js` validates and serves that file without caching,
+before `jellytool.js`. Reloading the page reads edits. Invalid JSON, unknown
+fields/tiers and duplicate model IDs produce a visible configuration error,
+without falling back over the user's changes. This file controls display alone.
+
+Each configured `tiers.complex` / `daily` / `simple` array replaces that tier's
+calculated result in the given order. Entries accept exact `id`, optional `name`,
+`recommended` and `alwaysShow`. `alwaysShow` displays a card without catalog
+access; selecting it still needs access. An empty array hides that tier's cards;
+omitting the tier restores automatic calculation. Configured IDs are removed
+from automatically calculated tiers, allowing a model to be moved without
+appearing twice. Automatic matching covers GPT, GLM, Qwen, Doubao Seed, Kimi and
+DeepSeek, retains both GPT simple roles, and excludes MiniMax. The shipped file
+contains the current calculated baseline with GPT's corrected exact IDs and
+DeepSeek V4 Pro `-0813` / V4.1 Flash `-1017`. Automatic DeepSeek matching compares
+numeric model versions first, then prefers a dated `-MMDD` variant over an
+undated one and the latest date within that version. Explicit configured IDs
+remain pinned, including older dates.
+Updates neither change saved selections nor edit Agents. User editing details:
+[recommendation configuration](../plans/jellytool-model-recommendations.md).
+See [P2 behavior and verification](../plans/jellytool-plugin-p2.md).
+
+
+The Jellytool native window and bundle ICNS/Dock use the user-selected A2
+soft-matte artwork in `assets/icons/jellytool-app.png`, supplied by
+`jellytoolAppIcon` and converted offline by the packager with macOS tools.
+The page brand, favicon, supplier entry and tray glyph source retain the
+Jellytoken website icon in `assets/icons/jellytoken.png`.
+Sources and resolutions are recorded in
+[ICON-SOURCE.md](../../build/jellytool/ICON-SOURCE.md). Jellytool's macOS window
+keeps its native title bar. Its sidebar brand is a compact, left-aligned header
+sharing the navigation icons' left edge, rather than reserving space for traffic
+lights a second time. The existing 22px icon keeps its proportions, and the
+wordmark fits even at the narrowest saved sidebar width. The existing sidebar
+toggle sits to the right of the wordmark while expanded, returning to the main
+toolbar when collapsed. `jellytoolSideToggle` moves the same button, retaining
+its translated label, shortcut, saved layout and keyboard focus. The placement
+and presentation are supplied by Jellytool; ordinary magpie branding and toggle
+placement are unchanged. WorkBuddy model-list POSTs on the reused Agent page explicitly sync
+only that connected adapter, since Jellytool does not run background Agent sync.
+
+In Jellytool, the Providers list pins Jellytoken first within its on/off group.
+The Add sheet places From plugins first when Jellytoken is present, with
+Jellytoken ahead of the other plugins, including while searching. These are
+display priorities; the saved routing order is unchanged. Its supplier entries
+and editor use the same local PNG as the application brand.
+
+
+### Local Jellytool launches
+
+[`build/jellytool/run.py`](../../build/jellytool/run.py) packages and launches the
+current checkout in one command: `python3 build/jellytool/run.py`. It selects a
+working Go from PATH or local mise installations, and Bun 1.4.2 from previous
+Jellytool bundles or PATH (`--go` and `--bun` override discovery). It downloads
+no runtime and changes no global tool configuration. Each invocation builds a
+fresh staging bundle under `~/.cache/jellytool-build/artifacts/`, copies the
+completed bundle to `~/Applications/Jellytool.app`, and launches that fixed
+copy. Only after `package.py` succeeds does it install and call `launch.py`, so
+a failed build leaves the running application alone. Packaging, installation
+and launch failures stop the command; launch failures retain the launcher's
+diagnostics and retry limits below.
+
+[`build/jellytool/launch.py`](../../build/jellytool/launch.py) replaces a local
+macOS build without asking `open -n` for a second instance. A per-data-root
+launcher lock rejects competing launchers. The launcher validates the bundle
+executable and instance lock before stopping previous instances, then ends
+instances with the same bundle ID and Jellytool processes with that exact lock
+file open (including another bundle ID). An unrelated process holding the file
+is reported, never terminated. Its default lock location follows
+[`appdir.Config`/`Resolve`](../../internal/appdir/appdir.go), including portable
+data and ignored relative XDG paths; `--lock` overrides the inspected path.
+The app receives the launcher's HOME and configured XDG paths explicitly.
+
+LaunchServices registering a new PID is not readiness. Success requires the
+requested bundle's new PID to be alive, AppKit's `finishedLaunching` flag to be
+true and the instance lock to be held, continuously for one second. This checks
+native startup, not a model request or frontend rendering. Output goes to
+`jellytool-instance.launch.log` beside the instance lock. A startup exit fails
+with that output, a startup timeout stops the new process, and neither causes
+an automatic application relaunch. Only `open` returning LaunchServices error
+`-600` is retried, at most three attempts. An unreadable lock or process inventory
+is an error, never evidence that nothing is running. Dry runs write nothing
+and stop no processes. The application and updater restart path are unchanged.
+
+Offline regression checks use temporary homes, unique bundle IDs and native
+AppKit fixtures, including startup failure, timeout, replacement, SIGKILL,
+another bundle ID sharing the lock, competing launchers and preview behavior:
+
+```sh
+python3 -B -m unittest discover -s build/jellytool -v
+```
+
+### Jellytool menu bar and supplier guidance
+
+From the 2026-11-09 development build, Jellytool creates its status-bar icon
+from the same website PNG in `setupJellytoolTray`: a padded monochrome alpha
+glyph is used as a macOS template image and as a theme-coloured Linux glyph,
+while Windows keeps the full-colour application icon. Its menu reuses the
+existing language selection and provides Open, Version and Quit, without the
+ordinary magpie quick panel, updater or handover. Closing or hiding the main
+window leaves the gateway and plugin running. A primary click opens and focuses
+the main interface, while the secondary click opens the private menu. The
+menu's Open and the Dock also reopen that window; Quit shuts down the owned
+runtime and listener. Display language saves also relabel this private menu. The native
+`TestJellytoolTrayKeepsWindowAvailable` runs under an isolated AppKit home and
+checks a real status-bar button, close-to-hide and reopening.
+
+The supplier page has a three-step guide keyed to the saved supplier state:
+add a key, select text models and Save, then connect WorkBuddy on the Agents
+page. Its help stays expanded across provider refreshes. The editor explains
+key replacement and Save/Cancel. The recommendation picker on Get started
+links to the supplier directory when more models are needed. These controls reuse the original sign-in, draft, discard and Agent
+navigation flows, and never connect an Agent or submit a Key by themselves.
+The empty supplier summary says that no models are selected instead of
+claiming usage-only support. Five-language browser checks cover the guidance,
+actions, empty states and draft behavior in Chromium and WebKit.
+
+[`jellytool-guide.md`](../../internal/gui/assets/jellytool-guide.md) is the
+bundled Chinese usage document. The packager copies it into Resources and
+beside the app as `使用说明.md`, so an offline build carries its instructions.
+
+### Jellytoken connection guidance and settings
+
+The permanent Get started page's provider step is extended by
+[`jellytool.js`](../../internal/gui/assets/jellytool.js) only in a Jellytool
+build: a link to `https://www.jellytoken.com/api-keys`, a masked key field and
+Verify and connect. This uses `POST /api/jellytool/key`; a successful key read
+completes provider access and offers model selection without selecting models
+or connecting an Agent for a first key with no previous provider choice. Legacy
+keys retain their implicit vendor-list mode, and saved selections survive key
+replacement or reconnection (`TestJellytoolKeyPreservesExistingModelChoices`).
+Once connected, key replacement and endpoint editing share one Connection
+settings action; the website key link remains available. The connection
+editor defaults to Responses for new connections and Restore default, while
+preserving an explicitly saved protocol. See the [plugin connection contract](provider-plugins.md#jellytools-offline-plugin-contract-p0).
+The model-selection step expands its three recommendation categories in place: complex problems,
+everyday work and coding, and simple tasks. The expanded picker reuses
+`jellyModelPanel` with its own local draft, preserving saved choices. All three
+categories remain expanded in the page; individual and category selection only
+change that draft. Choose from All models transfers it to the supplier directory. Cancel drops it; Save calls
+the existing supplier Save endpoint with only model choices, then rereads setup
+progress. A failed Save retains the draft for retry, and background setup reads
+retain the expanded picker. Connection settings remain a separate action.
+
+Jellytool's permanent checklist reuses the app's system font, accent, theme
+tokens and existing check icons. `jellytoolQuickstart` arranges explanation and
+actions in the same two columns for each configuration step. They stack below
+700px or when a saved sidebar leaves insufficient content width.
+The model action toggles Choose models / Collapse models and `aria-expanded`.
+Collapsing retains the draft and active tab; reopening resumes the same model
+selection. Cancel and Save end the selection session. The three configuration steps
+stay visible; only the first unfinished configuration step has a primary action,
+and a completed page keeps
+all configuration actions. Configured steps retain their original numbers and
+show a separate green status dot; configuration actions remain available for
+editing. The model picker's Browse more models action keeps its full label and
+arrow, with its own row on narrow windows. The key has a visible label, Enter submission,
+inline error and busy states. Unknown provider state shows a matching skeleton;
+a failed read exposes an explicit retry. Identical background reads retain the
+existing guide DOM so typing, IME composition, selection and visibility survive.
+Meaningful progress/language changes redraw it, restoring a focused key field.
+A fourth, permanent **Use models in your agent** step shows usage tabs only for
+currently wired Agents, defaulting to the first connected Agent. Installed but
+unconnected Agents have no tab. Without a connected Agent, the step asks the
+reader to complete step 3; a failed setup read is shown as unknown. Tabs wrap
+on narrow windows and support arrow keys, Home and End. It reuses `PICKS_IN`
+and `NO_PICKER` from the Agent page for the
+selection method, with Claude tier mapping and Codex CLI/app guidance. Each guide
+explains reopening, selecting a model and starting a conversation, plus a
+collapsible missing-model checklist. Switching guides only changes local display
+state: it neither edits Agent configuration nor submits a request. Reading the
+guide does not assert successful model usage; the progress label explicitly
+counts the three configuration checks. Selection, expanded help and tab
+focus survive meaningful configuration redraws. Disconnecting the selected Agent
+falls back to the first remaining connected Agent; disconnecting all removes
+the tabs and instructions. These presentation hooks apply only to Jellytool's permanent page, not the tray
+card or ordinary magpie. Five-language checks cover both themes and engines,
+wide/narrow layouts, contrast, focus, validation and completion states.
+
+A fifth **Image generation setup (optional)** step explains replacing an Agent's
+image model through the image MCP tool. It links to Settings → Models → Image
+generation, where choosing a model instead of Off enables generation. Its explicit
+Check action reads `/api/library?glance=1` without changing configuration. The
+result distinguishes installed, unassigned, found-in-Agent and missing servers;
+it recognizes the current or legacy product's `mcp image` command regardless of
+the saved server name. Failed reads remain unknown with retry, and failed Agent
+writes are reported rather than counted as configured. If the Library is off,
+the action offers its existing enable operation. Installation and Agent selection
+reuse the Library's MCP tab and market card; no duplicate server is installed by
+the check. The guide explains reopening the Agent, enabling MCP (including
+WorkBuddy's manual approval), an explicit sample prompt with Copy, project output,
+image editing and `generation_result` polling. Size guidance explains passing
+`size` to `generate_image` as an aspect ratio or `WIDTHxHEIGHT` pixels, the
+model-dependent supported sizes and the default when omitted. Separate copyable
+prompts show a ratio, an explicit pixel size and a natural-language model
+selection. A ratio alone promises no exact pixel resolution. Naming a model in a
+prompt passes it to `generate_image.model` for that call only; omitting it keeps
+the saved Settings default. Neither this optional step nor
+reading its instructions contributes to the three required setup checks. See
+`jellytool-connection.test.cjs` for both engines and all five languages.
+
+The supplier editor keeps its existing models, draft, discard and Save behavior.
+Its Jellytoken connection section (also used before first sign-in) has a masked
+replacement key field, editable Base URL, five protocol choices, Restore default,
+a trial-model field, Detect APIs and Each picked model. `GET /api/jellytool/config`
+reads settings; `POST /api/jellytool/detect` probes the current draft; Use these
+changes only the draft. Save calls `POST /api/jellytool/config` to validate and
+commit connection changes before the existing supplier Save. Blank keys retain
+the stored key, and a validation failure leaves that connection unchanged and
+keeps the editor open. Reading initial values cannot overwrite typing or make an
+untouched draft dirty. The original magpie guide/editor uses none of these hooks.
+Provider/plugin persistence, protocol selection and probe limits are described
+in [the private plugin contract](provider-plugins.md#jellytools-offline-plugin-contract-p0).
+See `jellytool-connection.test.cjs` and `jellytool-providers.test.cjs` for both
+browser engines, all five languages and narrow/wide windows.
+
+### Jellytool display branding
+
+Build-time [`product.Name`, `ID`, `Website` and `Text`](../../internal/product/text.go)
+give Jellytool its display name, command spelling and website. `Text` applies
+only to application-owned prose templates before their user values are formatted.
+The ordinary build retains the original text. The page's `t` and `tNotice` use
+[`productText`](../../internal/gui/assets/i18n.js) on registered translation
+templates before substituting names, commands or paths; third-party text that
+has no registered key is shown as received. This covers built-in plugins too,
+without changing their translation keys or `window.magpie` API.
+
+Package names, URLs, headers, protocol paths, config identifiers, references to
+remote magpie, the upstream community and existing magpie entries keep their
+spelling. The Library's MCP hub remains named `magpie`. About links to Jellytoken
+as the product website. Its existing Open-source licenses row says "Based on
+magpie", without a separate upstream link or community row. View opens the
+bundled notices, including magpie's original copyright and complete MIT license;
+the app bundle also retains the unchanged root `LICENSE`. `test_package.py`
+checks both copies and unchanged third-party statements. The home-screen metadata
+and manifest use the Jellytool name and icon. Its bundled PNG joins the existing
+home-screen asset whitelist for cookie-free GET/HEAD; API requests still require
+the page's key.
+`/index.html` serves the same branded page as `/`.
+The bundled notices change only their product introduction; original copyright
+and license sections are preserved.
+
+[`jellytool-branding.test.cjs`](../../internal/gui/tests/jellytool-branding.test.cjs)
+checks translated templates, literal user values, retained protocol and upstream
+names, and the Agents/Settings/About pages in both engines, five languages and
+wide/narrow windows. `TestJellytoolPage` covers the page aliases and manifest.

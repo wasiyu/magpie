@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/agent"
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/provider"
 )
 
@@ -338,6 +339,14 @@ func agentModelsAPI(mux *http.ServeMux) {
 		}
 		id := a.ListsFor()
 		answer := func() {
+			// Jellytool has no background catalog writer. An explicit WorkBuddy
+			// list edit updates only the adapter the user is editing.
+			if product.Jellytool && a.ID == "workbuddy" {
+				if err := a.Sync(); err != nil {
+					fail(rw, err)
+					return
+				}
+			}
 			_, only := provider.PickedModels(id)
 			writeJSON(rw, map[string]any{"models": agentModelList(a), "count": modelCount(id), "only": only})
 		}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"slices"
 	"strconv"
 	"strings"
@@ -347,7 +348,7 @@ func quotaAutoResetCmd(args []string) error {
 		}
 	}
 	if when != "" && !set {
-		return fmt.Errorf("say on or off: magpie quota auto-reset <account> %s on", when)
+		return fmt.Errorf(product.Text("say on or off: magpie quota auto-reset <account> %s on"), when)
 	}
 	if !set && user == "" {
 		on := settings.Load().CodexAutoReset

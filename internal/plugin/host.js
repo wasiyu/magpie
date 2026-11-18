@@ -3645,6 +3645,19 @@ const handlers = {
     return { plugins: loaded.map(withProviders) }
   },
   providers: (p, signal) => providers(p ?? {}, signal),
+  // Jellytool's bundled provider validates a candidate connection before this
+  // host atomically replaces its auth record. Probes return no auth record.
+  async jellytool(p) {
+    const a = auths().get("jellytoken")?.auth
+    if (typeof a?.jellytool !== "function") throw new Error("Jellytoken connection settings are unavailable")
+    const key = signInKey("jellytoken", "jellytoken")
+    const result = await via.run("direct", () => inScope("jellytoken", key, () => a.jellytool(authCopy(key), p)))
+    if (result.auth) {
+      setAuth(key, result.auth)
+      delete result.auth
+    }
+    return result
+  },
   prompt: async (p) => ({ prompt: await nextPrompt(p.provider, p.method, p.inputs ?? {}) }),
   validate: (p) => ({ error: validate(p.provider, p.method, p.key, p.value) }),
   authorize,

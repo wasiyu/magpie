@@ -8,6 +8,7 @@ import (
 	"github.com/yetone/magpie/internal/applog"
 	"github.com/yetone/magpie/internal/gui"
 	"github.com/yetone/magpie/internal/proc"
+	"github.com/yetone/magpie/internal/product"
 )
 
 const hasGUI = true
@@ -26,6 +27,9 @@ func runGUI(showMain bool, link string) error {
 var openApp = func(showMain bool, link string) error {
 	proc.UserPath()
 	gui.Started = ownSignals // once Wails handles them: it quits through OnShutdown
+	if product.Jellytool {
+		return gui.RunJellytool(version)
+	}
 	return gui.Run(version, showMain, link)
 }
 

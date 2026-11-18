@@ -11,3 +11,8 @@
 /.overlay/
 /internal/conptypair/amd64/
 /internal/conptypair/arm64/
+.DS_Store
+__pycache__/
+*.pyc
+/assets/mcp-test.png
+/assets/seaside.png

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"html"
 	"log"
 	"net"
@@ -255,7 +256,7 @@ func webGuard(cookie, key string, keep time.Duration, box boxSignIn, next http.H
 		}
 		if q := r.URL.Query(); q.Has("k") {
 			if !same(q.Get("k")) {
-				http.Error(rw, "this link's key is not this magpie web's: use the link it printed when it started", http.StatusUnauthorized)
+				http.Error(rw, product.Text("this link's key is not this magpie web's: use the link it printed when it started"), http.StatusUnauthorized)
 				return
 			}
 			q.Del("k")
@@ -307,7 +308,7 @@ func webGuard(cookie, key string, keep time.Duration, box boxSignIn, next http.H
 			lead = ""
 		}
 		if r.Method != http.MethodGet || !strings.Contains(r.Header.Get("Accept"), "text/html") {
-			http.Error(rw, lead+why, http.StatusUnauthorized)
+			http.Error(rw, product.Text(lead+why), http.StatusUnauthorized)
 			return
 		}
 		log.Printf("magpie web: turned away %s from %s: %s", r.URL.Path, r.RemoteAddr, short)
@@ -324,6 +325,7 @@ var webAppFiles = map[string]bool{
 	"/manifest.json":              true,
 	"/icons/apple-touch-icon.png": true,
 	"/icons/icon-512.png":         true,
+	"/icons/jellytoken.png":       product.Jellytool,
 }
 
 // webSignInPath takes the key pasted into the form a page turned away shows.
@@ -346,11 +348,11 @@ func webTurnedAway(rw http.ResponseWriter, r *http.Request, back, why string) {
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 	rw.Header().Set("Cache-Control", "no-store")
 	rw.WriteHeader(http.StatusUnauthorized)
-	fmt.Fprintf(rw, `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>magpie web</title>
+	fmt.Fprintf(rw, `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>%s web</title>
 <style>body{font:15px/1.5 system-ui,sans-serif;max-width:32em;margin:12vh auto;padding:0 16px;color:#222;background:#fafafa}@media(prefers-color-scheme:dark){body{color:#ddd;background:#1c1c1e}}input,button{font:inherit;padding:.4em .6em}input{width:100%%;box-sizing:border-box;margin:.5em 0}</style></head>
-<body><h1>magpie web</h1><p>%s</p><p>Paste the key (MAGPIE_WEB_KEY, or the k= in the link magpie web printed when it started):</p>
+<body><h1>%s web</h1><p>%s</p><p>Paste the key (MAGPIE_WEB_KEY, or the k= in the link %s web printed when it started):</p>
 <form method="post" action="%s"><input type="hidden" name="back" value="%s"><input type="password" name="key" autocomplete="current-password" autofocus required><button type="submit">Sign in</button></form></body></html>`,
-		html.EscapeString(why), webSignInPath, html.EscapeString(back))
+		product.Name, product.Name, html.EscapeString(product.Text(why)), product.ID, webSignInPath, html.EscapeString(back))
 }
 
 // NetworkLinks are the links to the page, served on port, that other

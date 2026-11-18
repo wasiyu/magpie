@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"io"
 	"maps"
 	"os"
@@ -119,7 +120,7 @@ func gatewayKeysTo(out io.Writer, args []string) error {
 		args = args[:2]
 	}
 	if (action == "list" && len(args) != 1) || (action != "list" && len(args) != 2) {
-		return fmt.Errorf("usage: magpie gateway-key list | add <name> [--key <value> | --key -] [--read-only] | rotate <id> [--key <value> | --key -] | remove <id> | limit <id> [list | off | reset [<n>] | remove <n> | [add] day|week|month|total|<N>d|<N>h|account [--account <provider>/<account> --window <name>] [--tokens N] [--cost USD] [--cache-reads] [--model <provider>/<model>|<provider>/* ...]] | models <id> [all | <provider>/<model>|<provider>/*|re:<regexp> ...] | aliases <id> [none | <name>=<provider>/<model> ...] | accounts <id> [all | <provider>/<account>|<provider>/<key id> ...] | quotas <id> [on | off] | concurrency <id> [<n> | off] | tier <id> [follow | standard | fast | ultrafast] | redact <id> [follow | on | off] | mcp <id> [all | none | <server>|<server>/<tool> ...] | access <id> [read-only | full] | move <id> <place> | issue --ttl <duration> [--name <name>] [--models a,b] [--accounts a,b] [--tokens N] [--cost USD] [--read-only] [--from <id>] | issuer <id> [on | off] | oidc [list | add --key <id> --repo owner/name … | remove <rule id>]")
+		return fmt.Errorf("%s", product.Text("usage: magpie gateway-key list | add <name> [--key <value> | --key -] [--read-only] | rotate <id> [--key <value> | --key -] | remove <id> | limit <id> [list | off | reset [<n>] | remove <n> | [add] day|week|month|total|<N>d|<N>h|account [--account <provider>/<account> --window <name>] [--tokens N] [--cost USD] [--cache-reads] [--model <provider>/<model>|<provider>/* ...]] | models <id> [all | <provider>/<model>|<provider>/*|re:<regexp> ...] | aliases <id> [none | <name>=<provider>/<model> ...] | accounts <id> [all | <provider>/<account>|<provider>/<key id> ...] | quotas <id> [on | off] | concurrency <id> [<n> | off] | tier <id> [follow | standard | fast | ultrafast] | redact <id> [follow | on | off] | mcp <id> [all | none | <server>|<server>/<tool> ...] | access <id> [read-only | full] | move <id> <place> | issue --ttl <duration> [--name <name>] [--models a,b] [--accounts a,b] [--tokens N] [--cost USD] [--read-only] [--from <id>] | issuer <id> [on | off] | oidc [list | add --key <id> --repo owner/name … | remove <rule id>]"))
 	}
 	switch action {
 	case "list", "add", "rotate", "remove":
@@ -207,7 +208,7 @@ func gatewayKeysTo(out io.Writer, args []string) error {
 // one model or provider under one key, the key's other models served once
 // it is spent.
 func gatewayKeyLimit(out io.Writer, args []string) error {
-	usage := fmt.Errorf("usage: magpie gateway-key limit <id> [off | reset [<n>] | remove <n> | [add] day|week|month|total|<N>d|<N>h|account [--account <provider>/<account> --window <name>] [--tokens N] [--cost USD] [--cache-reads] [--model <provider>/<model>|<provider>/* ...]]")
+	usage := fmt.Errorf("%s", product.Text("usage: magpie gateway-key limit <id> [off | reset [<n>] | remove <n> | [add] day|week|month|total|<N>d|<N>h|account [--account <provider>/<account> --window <name>] [--tokens N] [--cost USD] [--cache-reads] [--model <provider>/<model>|<provider>/* ...]]"))
 	if len(args) == 0 {
 		return usage
 	}
@@ -229,7 +230,7 @@ func gatewayKeyLimit(out io.Writer, args []string) error {
 				if len(have) == 0 {
 					return nil, fmt.Errorf("%s has no limit", keys[i].Name)
 				}
-				return nil, fmt.Errorf("a limit's number is 1 to %d, as `magpie gateway-key limit %s` lists them: %q", len(have), id, v)
+				return nil, fmt.Errorf(product.Text("a limit's number is 1 to %d, as `magpie gateway-key limit %s` lists them: %q"), len(have), id, v)
 			}
 			n--
 			return &n, nil
@@ -297,7 +298,7 @@ func gatewayKeyLimit(out io.Writer, args []string) error {
 						strings.EqualFold(l.Account, v.Account) && strings.EqualFold(l.AccountWindow, v.AccountWindow)
 				})
 				if n < 0 {
-					return fmt.Errorf("%s has %d limits and none %s%s: add one with `magpie gateway-key limit %s add %s ...`, or take one off with `remove <n>`", keys[i].Name, len(have), perPhrase(v), onModels(v), id, args[1])
+					return fmt.Errorf(product.Text("%s has %d limits and none %s%s: add one with `magpie gateway-key limit %s add %s ...`, or take one off with `remove <n>`"), keys[i].Name, len(have), perPhrase(v), onModels(v), id, args[1])
 				}
 				in.Index = &n
 			}
@@ -504,7 +505,7 @@ func parseKeyLimit(window string, rest []string, usage error) (*access.Limit, er
 //	magpie gateway-key models <id> openai/gpt-5 anthropic/*  only these
 func gatewayKeyModels(out io.Writer, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: magpie gateway-key models <id> [all | <provider>/<model>|<provider>/* ...]")
+		return fmt.Errorf("%s", product.Text("usage: magpie gateway-key models <id> [all | <provider>/<model>|<provider>/* ...]"))
 	}
 	id := args[0]
 	if len(args) > 1 {
@@ -666,7 +667,7 @@ func limitWords(k access.Key, now time.Time) string {
 // key may use every other, those signed in later too.
 func gatewayKeyAccounts(out io.Writer, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: magpie gateway-key accounts <id> [all | <provider>/<account>|<provider>/<key id>|<provider>/!<account>|@<group>|!@<group> ...]")
+		return fmt.Errorf("%s", product.Text("usage: magpie gateway-key accounts <id> [all | <provider>/<account>|<provider>/<key id>|<provider>/!<account>|@<group>|!@<group> ...]"))
 	}
 	id := args[0]
 	if len(args) > 1 {
@@ -795,7 +796,7 @@ func gatewayKeyGroups(out io.Writer, args []string) error {
 //	magpie gateway-key quotas <id>         whether it is
 //	magpie gateway-key quotas <id> on|off  tell it them, or none (#1981)
 func gatewayKeyQuotas(out io.Writer, args []string) error {
-	usage := fmt.Errorf("usage: magpie gateway-key quotas <id> [on | off]")
+	usage := fmt.Errorf("%s", product.Text("usage: magpie gateway-key quotas <id> [on | off]"))
 	if len(args) == 0 || len(args) > 2 {
 		return usage
 	}

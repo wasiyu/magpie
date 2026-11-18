@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"io"
 	"net"
 	"net/http"
@@ -34,7 +35,7 @@ func healthcheck(args []string) error {
 	defer res.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
 	if res.StatusCode != http.StatusOK || !bytes.Contains(b, []byte(`"magpie"`)) {
-		return fmt.Errorf("%s answers %s, not as a magpie gateway", base, res.Status)
+		return fmt.Errorf(product.Text("%s answers %s, not as a magpie gateway"), base, res.Status)
 	}
 	return nil
 }

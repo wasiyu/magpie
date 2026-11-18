@@ -21,8 +21,11 @@ package agent
 // magpie sets is whether its models are in that picker; the user's other
 // providers stay as they are. Its requests carry magpie-pencil, as its
 // User-Agent isn't known.
+// Jellytool instead defaults the provider to Responses when every selected
+// model is native there; an existing provider's chosen API stays theirs.
 
 import (
+	"github.com/yetone/magpie/internal/product"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -70,7 +73,7 @@ func pencil(home string) *Agent {
 				return edit.SetJSON(path, edit.KV{Path: key, Value: theirsKept(path, key, func() any { return pencilProviderJSON(gateway.URL()) }, "models")()})
 			},
 			Options: func(map[string]string) []Option {
-				return []Option{{Value: magpieID, Label: "magpie", Icon: "magpie", Note: "every magpie model in Pencil's model picker"}}
+				return []Option{{Value: magpieID, Label: product.Name, Icon: "magpie", Note: "every magpie model in Pencil's model picker"}}
 			},
 		}},
 	}
@@ -99,7 +102,12 @@ func pencilApp(home string) bool {
 // spend being counted by magpie.
 func pencilProviderJSON(gw string) map[string]any {
 	ms := []map[string]any{}
-	for _, m := range sharedModels("pencil") {
+	models := sharedModels("pencil")
+	api := "openai-completions"
+	if product.Jellytool && modelsOnResponses(models) {
+		api = "openai-responses"
+	}
+	for _, m := range models {
 		e := piModelJSON(m, gw, false)
 		if _, ok := e["input"]; !ok {
 			e["input"] = []string{"text"}
@@ -114,7 +122,7 @@ func pencilProviderJSON(gw string) map[string]any {
 		e["compat"] = map[string]any{}
 		ms = append(ms, e)
 	}
-	return map[string]any{"name": "magpie", "baseUrl": gw + "/v1", "api": "openai-completions",
+	return map[string]any{"name": "magpie", "baseUrl": gw + "/v1", "api": api,
 		"apiKey": agentKeyAt("pencil", gw), "models": ms}
 }
 

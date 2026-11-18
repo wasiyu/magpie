@@ -51,6 +51,7 @@ package agent
 // magpie's provider, not their own.
 
 import (
+	"github.com/yetone/magpie/internal/product"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -257,7 +258,7 @@ func anteAt(at place) *Agent {
 				return put("")
 			},
 			Options: func(map[string]string) []Option {
-				return []Option{{Value: magpieID, Label: "magpie", Icon: "magpie", Note: "every magpie model in Ante's model picker, and Ante starts on magpie"}}
+				return []Option{{Value: magpieID, Label: product.Name, Icon: "magpie", Note: "every magpie model in Ante's model picker, and Ante starts on magpie"}}
 			},
 		}, {
 			// Ante names the model on its own, without a provider in front

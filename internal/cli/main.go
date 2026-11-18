@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"os"
 	"slices"
 	"strings"
@@ -227,24 +228,24 @@ func Main(v string) {
 		if len(os.Args) > 1 {
 			switch os.Args[1] {
 			case "-v", "--version", "version":
-				fmt.Println("magpie", version)
+				fmt.Println(product.Name, version)
 				return
 			case "-h", "--help", "help":
-				fmt.Print(usage)
+				fmt.Print(product.Text(usage))
 				return
 			case "licenses":
 				fmt.Print(notices.Text)
 				return
 			}
 		}
-		fmt.Fprintln(os.Stderr, "magpie:", err)
+		fmt.Fprintln(os.Stderr, product.ID+":", err)
 		os.Exit(1)
 	}
 	// moved to a disk that isn't connected: never an empty magpie in its place
 	unreachableStop(os.Args[1:])
 	slices.Sort(ignored)
 	for _, v := range ignored {
-		fmt.Fprintf(os.Stderr, "magpie: ignoring %s: not an absolute path (the programs magpie starts still get it)\n", v)
+		fmt.Fprintf(os.Stderr, product.Text("magpie: ignoring %s: not an absolute path (the programs magpie starts still get it)\n"), v)
 	}
 	if provider.TookOpenedURL(os.Args[1:]) {
 		// Claude Code, signing in for magpie, handed over the page to open
@@ -265,7 +266,7 @@ func Main(v string) {
 			code = e.code
 		}
 		if msg := err.Error(); msg != "" {
-			fmt.Fprintln(os.Stderr, "magpie:", msg)
+			fmt.Fprintln(os.Stderr, product.ID+":", msg)
 		}
 		endProcess(code)
 	}
@@ -369,7 +370,7 @@ func run(args []string) error {
 	// before anything is read, moved or started: --help on any command
 	// prints its usage and does nothing else
 	if helpAsked(args) {
-		fmt.Println(strings.TrimRight(helpFor(args), "\n"))
+		fmt.Println(product.Text(strings.TrimRight(helpFor(args), "\n")))
 		return nil
 	}
 	// a ccswitch:// link an older magpie's claim on CC Switch's scheme
@@ -597,10 +598,10 @@ func run(args []string) error {
 	case "daemon":
 		return daemonCmd(args[1:])
 	case "-h", "--help", "help":
-		fmt.Print(usage)
+		fmt.Print(product.Text(usage))
 		return nil
 	case "-v", "--version", "version":
-		fmt.Println("magpie", version)
+		fmt.Println(product.Name, version)
 		return nil
 	case "licenses":
 		fmt.Print(notices.Text)
@@ -707,7 +708,7 @@ func run(args []string) error {
 			link := a.Import()
 			if link == "" {
 				// Lody takes only a gateway on this computer's loopback
-				return fmt.Errorf("%s takes magpie only at a loopback address, and the gateway is at %s: nothing was opened", a.Name, gateway.URL())
+				return fmt.Errorf(product.Text("%s takes magpie only at a loopback address, and the gateway is at %s: nothing was opened"), a.Name, gateway.URL())
 			}
 			// handed over only when something here opens it, or nothing
 			// opens and nothing says so (sungt, 10-29)
@@ -826,15 +827,15 @@ func modelAlias(a *agent.Agent, w string) bool {
 func fieldAsValue(a *agent.Agent, f, g *agent.Field, value string) error {
 	for _, name := range []string{f.Key + " " + value, f.Key + "_" + value} {
 		if h := a.Field(name); h != nil {
-			return fmt.Errorf("%q is one field of %s's: magpie %s %s shows it", h.Label, a.Name, a.ID, h.Key)
+			return fmt.Errorf(product.Text("%q is one field of %s's: magpie %s %s shows it"), h.Label, a.Name, a.ID, h.Key)
 		}
 	}
 	if g.Options != nil {
 		if o := g.Options(a.Values()); len(o) == 1 && o[0].Value == "on" {
-			return fmt.Errorf("%q is a switch of %s's, not a value for its %s: magpie %s %s on", value, a.Name, f.Label, a.ID, g.Key)
+			return fmt.Errorf(product.Text("%q is a switch of %s's, not a value for its %s: magpie %s %s on"), value, a.Name, f.Label, a.ID, g.Key)
 		}
 	}
-	return fmt.Errorf("%q is a field of %s's, not a value for its %s: magpie %s %s shows it", value, a.Name, f.Label, a.ID, g.Key)
+	return fmt.Errorf(product.Text("%q is a field of %s's, not a value for its %s: magpie %s %s shows it"), value, a.Name, f.Label, a.ID, g.Key)
 }
 
 // showField is `magpie <agent> <field>`: what the field is set to, as set
@@ -894,7 +895,7 @@ func goneDefault(id string, g agent.Gone, err error) error {
 		fmt.Println(green.Render("✓"), bold.Render(g.PluginOff), muted.Render("is not on magpie: its plugin is off, and magpie put back what it had when the plugin was turned off"))
 	}
 	if err != nil {
-		return fmt.Errorf("%s's plugin is gone, and magpie couldn't put its config back: %w", id, err)
+		return fmt.Errorf(product.Text("%s's plugin is gone, and magpie couldn't put its config back: %w"), id, err)
 	}
 	return nil
 }
@@ -1035,7 +1036,7 @@ func profiles(args []string) error {
 		return nil
 	case "save":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: magpie save <name>")
+			return fmt.Errorf("%s", product.Text("usage: magpie save <name>"))
 		}
 		p, err := profile.Snapshot()
 		if err != nil {
@@ -1051,7 +1052,7 @@ func profiles(args []string) error {
 		return nil
 	case "use":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: magpie use <name>")
+			return fmt.Errorf("%s", product.Text("usage: magpie use <name>"))
 		}
 		ps, err := profile.Load()
 		if err != nil {
@@ -1072,7 +1073,7 @@ func profiles(args []string) error {
 		return nil
 	case "rm":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: magpie rm <name>")
+			return fmt.Errorf("%s", product.Text("usage: magpie rm <name>"))
 		}
 		if err := profile.Delete(args[1]); err != nil {
 			return err

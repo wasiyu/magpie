@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/gateway"
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/update"
@@ -31,7 +32,8 @@ import (
 // replaced at all (run from its disk image, say) is sent to the release page.
 type updater struct {
 	mu     sync.Mutex
-	state  string // checking | latest | found | downloading | ready | available | source | error | blocked
+	ctx    context.Context // the app's lifetime; nil for checks outside an app
+	state  string          // checking | latest | found | downloading | ready | available | source | error | blocked
 	latest *update.Release
 	// behind: when the pill was dismissed, and whether a newer version is
 	// urgent; a dismissed pill waits for it (update.Behind)
@@ -122,6 +124,7 @@ type updater struct {
 }
 
 type updateJSON struct {
+	Manual  bool   `json:"manual,omitempty"` // download page only, no self-install
 	State   string `json:"state"`
 	Current string `json:"current"`
 	Latest  string `json:"latest,omitempty"`
@@ -202,33 +205,56 @@ func updateDue(s settings.Settings, last, now time.Time) bool {
 }
 
 func (u *updater) start() {
+	u.startIn(context.Background())
+}
+
+// startIn shares the check loop with Jellytool, whose app cancels and joins it
+// on shutdown. Its checks never prepare a bundle or binary for replacement.
+func (u *updater) startIn(ctx context.Context) <-chan struct{} {
+	u.mu.Lock()
+	u.ctx = ctx
+	u.mu.Unlock()
 	u.behind = update.ReadBehind(Version)
 	u.place(runtime.GOOS, update.GUI)
-	gateway.SetRestarter(u.restartBesideAsked) // magpie update in a terminal
-	gateway.SetForceRestarter(u.restartBesideNow)
-	gateway.SetUpdater(u.updateAsked)                   // a magpie using this one updated
-	go provider.KeepRemotesUpdated(backendCtx, Version) // and this one's remotes
-	go u.followReplaced(backendCtx)                     // the app's or magpie web's update (visamzh on X)
-	if u.bundle != "" {
-		go update.ForgetOldStaging(u.bundle) // #3965
+	// Jellytool never replaces itself: nothing restarts it into a new
+	// version, and it updates no other magpie
+	if !product.Jellytool {
+		gateway.SetRestarter(u.restartBesideAsked) // magpie update in a terminal
+		gateway.SetForceRestarter(u.restartBesideNow)
+		gateway.SetUpdater(u.updateAsked)                   // a magpie using this one updated
+		go provider.KeepRemotesUpdated(backendCtx, Version) // and this one's remotes
+		go u.followReplaced(backendCtx)                     // the app's or magpie web's update (visamzh on X)
+		if u.bundle != "" {
+			go update.ForgetOldStaging(u.bundle) // #3965
+		}
 	}
+	done := make(chan struct{})
 	go func() {
-		time.Sleep(5 * time.Second) // let the app settle first
-		// until this one has handed the gateway to the new version: the
+		defer close(done)
+		timer := time.NewTimer(5 * time.Second) // let the app settle first
+		defer timer.Stop()
 		// copy an update left finishing its requests checks for, and
 		// restarts into, nothing (#4938)
 		for backendCtx.Err() == nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-backendCtx.Done():
+				return
+			case <-timer.C:
+			}
 			u.mu.Lock()
 			last, st, retry := u.asked, u.state, u.retry
 			u.mu.Unlock()
 			s := settings.Load()
-			if now := time.Now(); updateDue(s, last, now) || fetchDue(s, st, retry, last, now) {
+			if now := time.Now(); (!product.Jellytool || update.Feed() != "") && (updateDue(s, last, now) || fetchDue(s, st, retry, last, now)) {
 				u.checkByClock()
 			}
 			u.autoTick(s)
-			time.Sleep(time.Minute)
+			timer.Reset(time.Minute)
 		}
 	}()
+	return done
 }
 
 // fetchDue is whether a version already found is fetched by itself now,
@@ -268,6 +294,9 @@ var (
 // only ever offered the release page. The app's own binary copied out of
 // its .app isn't replaced by the terminal build.
 func (u *updater) place(goos string, gui bool) {
+	if product.Jellytool {
+		return
+	}
 	if b := bundleOf(); b != "" {
 		if u.stuck = update.Stuck(b); u.stuck == "" {
 			u.bundle = b
@@ -540,7 +569,12 @@ func (u *updater) begin() bool {
 var checkWait = 10 * time.Minute
 
 func (u *updater) run() {
-	ctx := context.Background()
+	u.mu.Lock()
+	ctx := u.ctx
+	u.mu.Unlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	cctx, cancel := context.WithTimeout(ctx, checkWait)
 	defer cancel()
 	takeStable(cctx) // a fresh install of Stable's version stays on Stable
@@ -648,7 +682,7 @@ func (u *updater) run() {
 	case !update.Newer(rel.Version, Version):
 		u.state = "latest"
 		return
-	case u.bundle == "" && u.exe == "":
+	case product.Jellytool || u.bundle == "" && u.exe == "":
 		u.state = "available" // the user fetches it from the release page
 		return
 	case u.byClock && u.blocked != nil && u.blocked.Version == rel.Version:
@@ -715,6 +749,9 @@ func (u *updater) run() {
 // and a folder that needs one waits for the next restart. A failure keeps
 // the staged version, so the restart can be tried again.
 func (u *updater) install(ask bool) bool {
+	if product.Jellytool {
+		return false
+	}
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if u.replaced() {
@@ -809,7 +846,11 @@ func (u *updater) jsonIn(lang string) updateJSON {
 			go u.relang(u.latest.Version, lang)
 		}
 	}
-	j := updateJSON{State: u.state, Current: Version, Run: runStarted, Error: u.err, Retry: u.retry}
+	j := updateJSON{State: u.state, Current: Version, Run: runStarted, Error: u.err, Retry: u.retry, Manual: product.Jellytool}
+	if product.Jellytool && update.Feed() == "" {
+		j.State = "unconfigured"
+		return j
+	}
 	if u.channel != "" && u.latest != nil {
 		j.Channel = u.channel
 		if u.state == "latest" {
@@ -976,6 +1017,13 @@ func updateRoutes(mux *http.ServeMux, w Windows) {
 			Total int    `json:"total,omitempty"`
 			Error string `json:"error,omitempty"`
 		}{Latest: j.Latest, Releases: []update.Note{}}
+		if product.Jellytool {
+			if j.Latest != "" {
+				out.Releases = []update.Note{{Version: j.Latest, Notes: j.Notes, URL: j.URL}}
+			}
+			writeJSON(rw, out)
+			return
+		}
 		if j.Latest != "" {
 			notes, total, err := fetchNotes(r.Context(), Version, j.Latest, pageLang(r))
 			if len(notes) == 0 && strings.TrimSpace(j.Notes) != "" {
@@ -1003,6 +1051,17 @@ func updateRoutes(mux *http.ServeMux, w Windows) {
 	// that can't replace itself is sent to the release page.
 	// The window's page names the tab it is on, to come back to it.
 	mux.HandleFunc("POST /api/update/install", func(rw http.ResponseWriter, r *http.Request) {
+		if product.Jellytool {
+			j := updates.json()
+			if j.State == "available" && j.URL != "" {
+				if err := w.OpenURL(j.URL); err != nil {
+					fail(rw, err)
+					return
+				}
+			}
+			writeJSON(rw, j)
+			return
+		}
 		var in struct {
 			View string `json:"view"`
 			// When: "now" restarts whatever is in flight, "cancel" stops

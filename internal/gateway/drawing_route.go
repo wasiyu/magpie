@@ -9,7 +9,7 @@ import (
 )
 
 func (server *Server) drawingModel(request *http.Request, id string) (provider.Provider, string, bool) {
-	if agentOf(request) != "codex" || strings.Contains(id, "/") {
+	if agentOf(request) != "codex" || strings.Contains(id, "/") || strings.Contains(request.UserAgent(), DrawAgent) {
 		return resolveDrawing(id)
 	}
 	preferred, group := server.codexDrawingProvider(request)

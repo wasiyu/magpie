@@ -712,7 +712,7 @@ body.window .view { padding: 2px max(0px, calc(16px - var(--bar, 0px))) 8px 16px
    stretch them alone edge to edge while the others sit in the middle (面条 on
    Discord): their tables and charts lay out by the room they get. Masking
    too, which stretched alone (refeccd on Discord) */
-body.window :is(#view-agents, #view-sessions, #view-providers, #view-routing, #view-groups, #view-gateway, #view-usage, #view-masking, #view-library, #view-plugins, #view-settings) { padding-left: max(16px, calc(50% - 600px)); padding-right: max(0px, calc(max(16px, calc(50% - 600px)) - var(--bar, 0px))); }
+body.window :is(#view-quickstart, #view-agents, #view-sessions, #view-providers, #view-routing, #view-groups, #view-gateway, #view-usage, #view-masking, #view-library, #view-plugins, #view-settings) { padding-left: max(16px, calc(50% - 600px)); padding-right: max(0px, calc(max(16px, calc(50% - 600px)) - var(--bar, 0px))); }
 /* a view takes focus (tabIndex -1) only so the keys scroll it after a click;
    a ring round the whole list there marks nothing a reader can act on (#1601) */
 .view:focus { outline: none; }
@@ -5340,10 +5340,8 @@ body.window .row.agent.gone > .ag-conn { margin-left: auto; }
 .ag-lead .guide-title { font-weight: 550; }
 .guide-step.done .guide-title { color: var(--fg-2); }
 .guide-say { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.guide-step.optional:not(.done) .guide-title { color: var(--fg-2); }
+.guide-check { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--fg); }
 .ag-lead .guide .text.primary { margin-top: 5px; }
-.guide-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.guide-acts .text { margin-top: 5px; }
 .guide-agents { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 5px; }
 .guide-agent { display: inline-flex; align-items: center; gap: 6px; height: 26px; max-width: 100%; padding: 0 10px 0 7px; border: 1px solid var(--line); border-radius: 13px; background: var(--card); color: var(--fg); font-size: 12px; cursor: pointer; transition: background .12s, border-color .12s; }
 .guide-agent > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -5714,3 +5712,7 @@ body.linux .action-confirm::backdrop { -webkit-backdrop-filter: none; backdrop-f
 .relay-line.mono { font-family: var(--code); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .relay-line.err, .relay-part.err { color: var(--red); }
 .relay-wait { font-size: 12px; }
+.quickstart-page > #quickstart { padding-top: 16px; }
+.quickstart-page .guide { padding: 18px 20px 10px; }
+.quickstart-page .guide-h { font-size: 18px; }
+.quickstart-page .guide-n { font-size: 14px; }

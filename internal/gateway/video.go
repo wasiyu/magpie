@@ -1601,6 +1601,7 @@ func (s *Server) videosContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer res.Body.Close()
+
 	if res.StatusCode != 200 {
 		writeError(w, provider.Chat, 502, fmt.Sprintf("the video couldn't be fetched: %d %s", res.StatusCode, http.StatusText(res.StatusCode)))
 		return
@@ -1661,6 +1662,23 @@ func (s *Server) remoteVideoContent(ctx context.Context, w http.ResponseWriter, 
 		return
 	}
 	defer res.Body.Close()
+	// Jellytoken's task API returns a presigned result URL. Fetch it through
+	// the same public-address guard as other vendor media, without auth.
+	if p.PluginProvider() == "jellytoken" && res.StatusCode == http.StatusTemporaryRedirect {
+		res.Body.Close()
+		at := res.Header.Get("Location")
+		download, err := http.NewRequestWithContext(ctx, http.MethodGet, at, nil)
+		if err != nil {
+			writeError(w, provider.Chat, 502, "invalid video download URL")
+			return
+		}
+		res, err = vendorClient(p).Do(download)
+		if err != nil {
+			writeError(w, provider.Chat, 502, fmt.Sprintf("the video couldn't be fetched: %v", err))
+			return
+		}
+		defer res.Body.Close()
+	}
 	if res.StatusCode != 200 {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 		said, ok := provider.Unsaid(b)

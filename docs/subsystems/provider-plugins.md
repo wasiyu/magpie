@@ -15,6 +15,95 @@ Some built-in subscriptions are deprecated and have community plugins that provi
 
 The `movers` map assembled in `internal/provider/migrate*.go` is the authoritative subscription-to-plugin mapping. Each mover's `min` is the minimum plugin version required by magpie. The list of moved subscriptions in [AGENTS.md](../../AGENTS.md#built-in-subscriptions-that-a-plugin-serves) is a contributor lookup; confirm the mapping in source when changing it.
 
+## Jellytool's offline plugin contract (P0)
+
+[`jellytool_bundle.go`](../../internal/plugin/jellytool_bundle.go) supplies a
+separate owned host, `JellytoolPlugins`, for the Jellytool application branch.
+Those P0 entry points remain independently testable; the `jellytool` build
+now composes them into its private desktop host and gateway (P1 below).
+The existing magpie plugin lifecycle is unchanged.
+
+`PackJellytoolPlugins` stages the embedded, dependency-free
+[`Jellytoken package`](../../internal/plugin/jellytoken/index.js) and a locally
+supplied Bun at exactly `BunVersion`, with a platform and SHA-256 runtime lock.
+`StartJellytoolPlugins` verifies those resources, stages content-addressed files
+under the caller's private `data/plugins`, and initializes the existing
+`host.js` RPC/stream implementation with that one plugin. It never reads a
+user plugin list, downloads Bun, installs dependencies, starts catalog sync or
+updates, or publishes auth events to magpie. The caller owns `Close` and must
+supply Jellytool's own data directory. Runtime resources and their lock are
+trusted application resources; protecting the whole application bundle belongs
+to app packaging, not to the editable data directory. A changed staged file or
+resource fails startup instead of executing or repairing it silently. The
+generation covers plugin code, its manifest, recommendation data and host code; a host-only app
+upgrade registers a fresh generation.
+
+The host exposes `Providers`, validated single-key replacement, connection
+management and `Fetch` for `jellytoken`. Provider results have the same data
+shape as the supplier page.
+The plugin preserves full model IDs and TEXT/IMAGE/VIDEO output kinds; type
+does not prove protocol, vision input, context, price or tool compatibility.
+Business errors, empty/malformed/unknown catalogs and HTTP failures are reported
+as listing failures without echoing the key. Catalog 401/403 retries once with
+X-API-Key. Requests forward only POSTs to the Chat, Responses, Anthropic,
+Gemini generation, System One, image generation/editing and video creation
+paths under the saved base, plus GETs for a video's status and content;
+redirects are returned without following. Other status codes and response
+streams pass through unchanged for text. IMAGE/VIDEO entries expose the
+gateway's OpenAI-compatible media protocol independently of the saved text
+protocol. The plugin translates these media requests to the saved root's
+`/api/ai/tasks` API ([official contract](https://www.jellytoken.com/docs/async-tasks)):
+`model` becomes `modelKey`, each submission receives a fresh `callbackId`, and
+image/video fields become `imageParams`/`videoParams`. Multipart edit images
+become data URLs at the MCP boundary; because Jellytoken accepts only public
+`https` or `asset://` reference images, local reference editing is refused
+before task submission. Masks are explicitly refused. Image
+tasks are polled until complete under the request's cancellation signal and
+a 14-minute ceiling. A video id encodes its task id and model so polling still
+works after a host restart; status is translated to the gateway's video shape.
+The plugin returns presigned result URLs without fetching them with its key.
+Images use the gateway's existing guarded downloader. Video content returns
+a redirect that the gateway follows through its guarded downloader without
+credentials. No model-specific parameter support beyond the platform's mappings
+is implied. `TestJellytoolMediaRoutes` checks task payloads, authentication,
+multipart conversion and method restrictions through the packaged Bun host.
+`TestJellytoolMediaThroughGateway` exercises MCP image generation, editing,
+video creation, polling and downloads through the real gateway and private host.
+
+`TestJellytoolBundleContract` and `TestJellytoolBundleIntegrity` exercise the
+real Bun host against loopback fixtures, including key replacement, all three
+request paths, catalog errors, redirects, and rejection of resource edits,
+third-party lists and ambient preloads. A private test launcher alone can
+supply a sandboxed loopback origin; the public entry has no origin/options
+argument. See the [P0 record](../plans/jellytool-plugin-p0.md) for reproduction
+and the distinction between contract tests and desktop/real-provider acceptance.
+
+Jellytool's connection editor uses `JellytoolConnection` in
+[`jellytool_active.go`](../../internal/plugin/jellytool_active.go) and the private
+`auth.jellytool` hook in the bundled package. Configuration reads return the
+base URL, protocol and sign-in presence, never the key. Candidate keys and
+connection changes must successfully read the candidate `/v1/models` before
+the host atomically replaces its one `plugin-auth.json` entry. Connection
+metadata and key are in the same record; a failed validation or durable write
+preserves the old record. No host restart or second credential store is used.
+New connections and records without protocol metadata default to the official
+base and Responses. Explicit saved protocols, including Chat Completions, remain
+unchanged. The connection editor's Restore default also selects Responses.
+Production bases require HTTPS without embedded credentials, query or
+fragment; only the private test launcher admits loopback HTTP.
+
+The saved protocol changes model NPM metadata and the loader's base, so the
+gateway selects Chat Completions, Responses, Anthropic or Gemini translation;
+System One marks its catalog as decision models. Changing a base never grants
+the plugin arbitrary outbound routes. Explicit detection uses the draft's base,
+optional replacement key and model IDs without writing them; it probes all five
+protocols with at most five calls in flight, up to 24 models and a bounded total
+wait. Successful status and protocol-shaped JSON are required. Results contain
+status and timing, never upstream text that could echo a credential. Catalog
+presence and a probe answer do not establish price or tool compatibility.
+`TestJellytoolConnectionDraftsAndCommit` covers failed replacement, draft probes,
+all protocol contracts, actual fetch destinations/auth and persistence on restart.
+
 ## Ownership and runtime paths
 
 `provider.Moved(id)` identifies a subscription whose migration state in `migrations.json` is `plugin`. In `/api/providers`, its row exposes `move.state == "plugin"`; the GUI also receives its id in `onPlugins`.
@@ -439,3 +528,43 @@ that can't be asked counts the CLI as there, and its authorize says what
 is missing, as before. Where the CLI goes and how it is kept current is
 the plugin's. Tests: `TestPluginInstallsItsCLI`,
 `TestPluginSignInInstallsItsCLI`.
+
+
+## Jellytool application composition
+
+A `jellytool` build enters [`jellytoolMain`](../../internal/cli/jellytool.go)
+before magpie startup. [`RunJellytool`](../../internal/gui/jellytool_app.go)
+activates the verified private host through
+[`ActivateJellytool`](../../internal/plugin/jellytool_active.go). The existing
+provider adapter's Cached/Providers/APIKey/LoaderOptions/Fetch calls then use
+that host and its memory catalog, never the general registry or disk catalog
+fallback. Its key account is fixed to `jellytoken`; a closed host fails rather
+than downloading or replacing a runtime. Normal builds retain their existing
+host lifecycle. The P0 owned-host API remains available for isolated contract
+checks. See the [P1 implementation record](../plans/jellytool-plugin-p1.md)
+for product admission, build identities and verification limits.
+
+[`jellytool_gateway_test.go`](../../internal/plugin/jellytool_gateway_test.go)
+exercises a real dynamic loopback gateway through this adapter and the private
+bundled Bun host to a local mock upstream: literal model IDs, replacement of
+the gateway token by the plugin key, and a returned streamed answer. Its test
+origin activation helper exists only in `_test.go`, not application builds.
+
+
+### Jellytool supplier recommendations (P2)
+
+The private plugin bundles [versioned recommendation data](../../internal/plugin/jellytoken/recommendations.json).
+[`JellytoolRecommendations`](../../internal/plugin/jellytool_recommendations.go)
+reads the embedded release copy and validates full IDs, categories, reasons,
+constraints, evidence, dates and maintainers. No model list has been reviewed
+for release yet, so the production list is empty; mock records belong only
+to browser fixtures. Recommendation data participates in bundle integrity
+checks and the private host generation. It grants neither key authorization
+nor protocol/tool compatibility.
+
+The active adapter serializes catalog reads with key replacement/sign-out;
+cache readers never wait for that network work. A key replacement clears
+the old catalog, and listing errors or fallback data expose no selectable
+models. A later successful refresh restores the catalog. See
+`TestJellytoolActiveAdapter`, `TestJellytoolRecommendationReleaseData` and
+[Jellytool P2 evidence](../plans/jellytool-plugin-p2.md).

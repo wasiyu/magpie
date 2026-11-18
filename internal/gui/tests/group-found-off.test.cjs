@@ -23,7 +23,8 @@ const models = [
 const info = (ids) => ids.map((id) => ({ id, ready: true }));
 const found = { id: "auto-m", name: "Model M", members: ["a/m", "b/m"], auto: true, ready: true, memberInfo: info(["a/m", "b/m"]) };
 const mine = { id: "mine", name: "Mine", members: ["a/x", "b/m"], ready: true, memberInfo: info(["a/x", "b/m"]) };
-const groups = (on, moved) => ({ models, pools: [], deciders: [], found: on, groups: on ? [mine, found] : [mine], ...(moved ? { moved } : {}) });
+const templates = [{ kind: "smart", group: { id: "smart-split", name: "Hard to strong, easy to cheap", members: ["a/m", "a/x"] } }];
+const groups = (on, moved) => ({ models, pools: [], deciders: [], found: on, groups: on ? [mine, found] : [mine], templates, ...(moved ? { moved } : {}) });
 
 const words = {
   en: { label: "Find groups on their own", onHint: "becomes a group of them", offHint: "only the groups you made or changed",
@@ -111,6 +112,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await card("Model M").waitFor({ state: "detached" }); // the found group left the list
       assert.equal(await card("Mine").count(), 1, "the user's group stays");
       assert((await box.textContent()).includes(w.offHint), "it says what is listed now");
+      assert.equal(await page.locator(".rt-gtpl, .rt-gtplbtn").count(), 0, "templates stay hidden while routing groups are off");
       await page.waitForFunction((m) => document.querySelector("#status").textContent.includes(m), w.moved);
       assert.equal(await at(), before, "the click moved nothing");
 
@@ -118,6 +120,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await card("Model M").waitFor();
       assert.deepEqual(posts, [{ on: false }, { on: true }]);
       assert.equal(await box.locator("button[role=switch]").getAttribute("aria-checked"), "true");
+      assert.equal(await page.locator(".rt-gtplbtn").count(), 1, "the template menu returns with routing groups");
       await page.waitForFunction((m) => document.querySelector("#status").textContent.includes(m), w.back);
       assert.equal(await at(), before, "nor did the second");
 

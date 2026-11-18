@@ -8,6 +8,99 @@ Code and Grok Build, failed-read retry, a superseding agent click, navigation
 away and reduced motion. `MAGPIE_ASSETS` selects older assets for the failing
 regression comparison; `ARTIFACT_DIR` retains Chinese desktop screenshots.
 
+`jellytool-update.test.cjs` exercises the shared header, version row and release
+notes in Jellytool: Download opens the browser rather than restarting, skip is
+kept through reloads and ends for a newer version, Check handles errors without
+claiming a failed download, and unconfigured builds say so. It checks that
+magpie's channel/download/restart/mirror/history controls are absent. Chromium
+and WebKit, all five languages, 420/1100px; fixture-only requests. Set
+`ARTIFACT_DIR` to save Chinese screenshots, or `JELLYTOOL_UPDATE_ASSETS` for
+mutation checks.
+
+`jellytool-connection.test.cjs` exercises website key guidance, failed/successful
+key entry, the shared connection editor, all five protocol controls, draft-only
+probes and applying results, discard, replacement failure and saving models.
+It verifies typed URL/key/model IDs reach detection and completed guide steps
+remain actionable. The Quick Start checks also cover a labeled key field,
+Enter submission, loading/retry/error/busy states, stable IME/focus/selection on
+background reads, a single primary action for the next step, explicit narrow
+layout and measured text/placeholder contrast in light and dark themes.
+The model step toggles its panel using Choose models / Collapse models, retaining
+unsaved choices on collapse. Configuration actions stay aligned in both states.
+The panel expands all three recommendation categories on Quick Start,
+including dotted model IDs and configured GPT product roles. Recommendation
+cards show a short purpose and upper-right selection mark. Recommendations and
+Selected share picks, including directory-only IDs, and support keyboard tabs
+and removal. Basic-information summaries, local line icons, vector selection marks and compact
+three-line cards are checked. Held metadata arriving during selection cannot
+detach the card, and held state reads after Save cannot expose stale choices.
+Cards omit details/evidence disclosures; each category has one Select available models / Clear toggle. Its label reflects
+partial/full selection, clearing preserves other choices, and keyboard focus
+stays on the control through both transitions. Selection contrast is checked in both
+themes and at wide/narrow widths. Checks cover
+individual/whole-category picks, preserved saved choices, draft-only selection,
+cancel, background refresh, failed Save/retry and an explicitly empty selection.
+The full-directory action carries unsaved choices to a focused supplier model
+editor. Back/reopen retains the shared selection, Save returns to Quick Start,
+and failed Save/retry and Cancel/discard preserve persisted values. Both Save
+paths locate the collapsed model step and focus Choose models after the saved
+state is read. Saved model names remain visible, refresh on equal-count changes,
+and disappear when the selection is cleared. Direct
+supplier entry keeps its usual editor and remains on Providers after Save.
+The permanent fourth usage step covers Agent-specific selection instructions,
+connected-Agent tabs, an empty prompt before connection, a configuration-only
+progress count, no writes or inference requests, and preserved selection, focus
+and troubleshooting expansion after redraw. Usage tabs exclude unconnected
+Agents, support keyboard navigation, wrap at narrow widths and fall back when
+the selected Agent disconnects. The optional fifth image step checks
+installed, legacy, unassigned, found and missing MCP servers, read/write errors,
+enabling the Library, installing for a selected Agent through the real Library
+UI, selecting the image model through Settings, and usage instructions. The
+image guidance is split into model, MCP tool and prompt sections. Size guidance
+covers ratios and pixel dimensions; copying the pixel example preserves the
+explicit `size` value. Copyable prompts identify `jellytool-image MCP`, including
+a natural-language `gpt-image-2.5-flare` model selection that applies to one call
+without changing the saved default. Checking alone changes no configuration.
+Entry/focus checks cover signed-out, disabled and removed providers (including
+a stale served count), deselected models, disconnected Agents, failed reads with
+retry and late responses from an earlier visit. These checks preserve saved picks
+and make no configuration writes. Both engines, five languages, wide/narrow
+windows; local fixtures only. `JELLYTOOL_CONNECTION_ASSETS` selects a temporary mutation copy.
+
+`getting-started.test.cjs` verifies the permanent Get started page before and
+after setup: provider access, model selection and Agent connection are separate
+steps, completed steps keep check icons and working configuration actions, routing
+is absent, and unconfigured launches default to this page while
+explicit navigation and later refreshes keep their target. The compact panel's
+dismissible card retains its existing behavior. Both engines, all five languages,
+wide and narrow windows, and the panel; isolated API fixtures only.
+`MAGPIE_GUIDE_ASSETS` can point at a temporary asset copy for regression checks.
+
+`jellytool-model-tiers.test.cjs` checks configured GPT-6 Astra/Luna and GPT-6.1 Sol/Terra tiers (Astra complex,
+Sol daily, Terra/Luna simple), one representative per other series and tier,
+MiniMax exclusion, numeric versions, authorized non-GPT text inputs and unchanged
+source objects. The connection browser tests also cover fixed GPT cards and
+recommendation badges without access, permission toasts on card and bulk picks,
+metadata redraws, saving only authorized IDs and retaining existing MiniMax picks.
+Access checks use the API catalog rather than saved supplier rows, wait for a
+held read, distinguish catalog errors from denied access, and cover partial
+bulk selection with Select available models / Clear labels.
+The tier checks run with Node alone, without browsers or network requests.
+
+`jellytool-branding.test.cjs` checks Jellytool translations, retained user and
+protocol names, Agents/Settings/About, and the native sidebar brand. The sidebar
+checks use the packaged icon and stylesheet, cover minimum/default/maximum saved
+widths in both themes and engines, and verify alignment, vertical centering, no
+clipping and the switch back to horizontal navigation. They also check the single
+sidebar toggle beside the wordmark, its return to the toolbar when collapsed,
+mouse/keyboard operation, focus retention and the saved layout after reload.
+
+`jellytool-providers.test.cjs` checks Jellytoken's display priority in the
+Providers list and Add sheet, the local Jellytool PNG, search and the sign-in
+form's placement. It covers five languages at wide and narrow widths in
+Chromium and WebKit, and checks that ordinary magpie keeps its ordering.
+All requests use local fixtures; `ARTIFACT_DIR` saves Chinese screenshots.
+
 `modal-backdrop.test.cjs` checks the modal's computed backdrop filter using
 the real stylesheet and platform marker: Windows desktop windows and panels
 keep the dimming veil without filtering, while browser pages, macOS and Linux

@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"io"
 	"mime"
 	"net/http"
@@ -141,9 +142,9 @@ func (g *toolGateway) rpc(path, method string, params any) (json.RawMessage, err
 	}
 	switch {
 	case res.StatusCode == http.StatusNotFound:
-		return nil, fmt.Errorf("the magpie at %s has no %s: it is older than this one, update it", g.base, path)
+		return nil, fmt.Errorf(product.Text("the magpie at %s has no %s: it is older than this one, update it"), g.base, path)
 	case res.StatusCode != http.StatusOK:
-		return nil, fmt.Errorf("the magpie at %s answered %s: %s", g.base, res.Status, strings.TrimSpace(string(data)))
+		return nil, fmt.Errorf(product.Text("the magpie at %s answered %s: %s"), g.base, res.Status, strings.TrimSpace(string(data)))
 	}
 	return g.answerOf(data)
 }
@@ -162,7 +163,7 @@ type rpcMessage struct {
 func (g *toolGateway) answerOf(data []byte) (json.RawMessage, error) {
 	var m rpcMessage
 	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, fmt.Errorf("what %s answered isn't JSON-RPC: is it magpie? (%v)", g.base, err)
+		return nil, fmt.Errorf(product.Text("what %s answered isn't JSON-RPC: is it magpie? (%v)"), g.base, err)
 	}
 	if m.Error != nil {
 		return nil, errors.New(m.Error.Message)
@@ -254,7 +255,7 @@ func fileURI(dir string) string {
 func (g *toolGateway) fetch(u string) ([]byte, error) {
 	pu, err := url.Parse(u)
 	if err != nil || !strings.HasPrefix(pu.Path, "/") {
-		return nil, fmt.Errorf("%q isn't a file of magpie's", u)
+		return nil, fmt.Errorf(product.Text("%q isn't a file of magpie's"), u)
 	}
 	res, err := g.do(http.MethodGet, pu.RequestURI(), nil)
 	if err != nil {
@@ -441,11 +442,11 @@ func paramShape(p toolParam) string {
 func toolsCmd(args []string) error {
 	for _, a := range args {
 		if strings.HasPrefix(a, "-") {
-			return fmt.Errorf("unknown flag %s (magpie tools [<name>])", a)
+			return fmt.Errorf(product.Text("unknown flag %s (magpie tools [<name>])"), a)
 		}
 	}
 	if len(args) > 1 {
-		return errors.New("magpie tools takes one tool's name at most (magpie tools [<name>])")
+		return errors.New(product.Text("magpie tools takes one tool's name at most (magpie tools [<name>])"))
 	}
 	g := newToolGateway()
 	tools, notes, err := listTools(g)
@@ -577,7 +578,7 @@ func parseToolArgs(t listedTool, in []string) (toolCall, error) {
 		name, val, hasVal := strings.Cut(a[2:], "=")
 		key := paramKey(props, name)
 		if key == "" {
-			return c, fmt.Errorf("%s takes no --%s: nothing was called; it takes %s (magpie tools %s)", t.Name, name, paramList(t), t.Name)
+			return c, fmt.Errorf(product.Text("%s takes no --%s: nothing was called; it takes %s (magpie tools %s)"), t.Name, name, paramList(t), t.Name)
 		}
 		p := props[key]
 		if !hasVal {
@@ -641,7 +642,7 @@ func parseToolArgs(t listedTool, in []string) (toolCall, error) {
 		}
 	}
 	if len(missing) > 0 {
-		return c, fmt.Errorf("%s needs %s: nothing was called (magpie tools %s)", t.Name, strings.Join(missing, " and "), t.Name)
+		return c, fmt.Errorf(product.Text("%s needs %s: nothing was called (magpie tools %s)"), t.Name, strings.Join(missing, " and "), t.Name)
 	}
 	return c, nil
 }
@@ -783,7 +784,7 @@ func callTool(g *toolGateway, t listedTool, args map[string]any) (json.RawMessag
 // toolCmd: magpie tool <name> [--<param> <value>…] [<words>…] [-o <path>] [--json]
 func toolCmd(args []string) error {
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
-		return errors.New("magpie tool needs a tool's name first: magpie tool <name> --<param> <value> … (magpie tools lists them)")
+		return errors.New(product.Text("magpie tool needs a tool's name first: magpie tool <name> --<param> <value> … (magpie tools lists them)"))
 	}
 	g := newToolGateway()
 	tools, notes, err := listTools(g)

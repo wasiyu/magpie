@@ -25,7 +25,8 @@ test("zh-TW has every zh string, with its placeholders and tags, in Traditional"
   for (const k of zh) {
     assert.equal(typeof tw[k], "string", k);
     assert.deepEqual(marks(tw[k]), marks(I18N.zh[k]), `zh-TW for ${JSON.stringify(k)}`);
-    assert.doesNotMatch(tw[k].replace(/\{\w+\}|<[^>]*>|简体中文/g, ""), simplified, `zh-TW for ${JSON.stringify(k)}: ${tw[k]}`);
+    // The bundled file's literal name is the same in every locale.
+    assert.doesNotMatch(tw[k].replace(/\{\w+\}|<[^>]*>|简体中文|使用说明\.md/g, ""), simplified, `zh-TW for ${JSON.stringify(k)}: ${tw[k]}`);
   }
   // Taiwan's words where they differ from the Mainland's
   for (const [k, want] of [["Settings", "設定"], ["File", "檔案"], ["Accounts", "帳號"], ["Default", "預設"], ["Sign in", "登入"], ["Save", "儲存"], ["Gateway", "閘道"]]) {
@@ -70,7 +71,7 @@ for (const [name, engine] of [["webkit", webkit], ["chromium", chromium]]) {
         await page.waitForFunction(() => typeof locale === "string" && document.documentElement.lang);
         const got = await page.evaluate(() => ({
           locale, lang: document.documentElement.lang, sys: navigator.language,
-          nav: [...document.querySelectorAll("button[data-view]")].map((b) => b.textContent.trim()).slice(0, 5),
+          nav: [...document.querySelectorAll('button[data-view]:not([data-view="quickstart"])')].map((b) => b.textContent.trim()).slice(0, 5),
           offered: LOCALES.map(([v, l]) => v + ":" + l),
           units: (chineseUnits = true, [fmtN(133000000), fmtN(68100)]),
         }));

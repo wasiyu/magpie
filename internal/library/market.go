@@ -23,6 +23,7 @@ import (
 	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/iconproxy"
 	"github.com/yetone/magpie/internal/lazyre"
+	"github.com/yetone/magpie/internal/product"
 )
 
 // The market is where the page finds MCP servers and skills to add in one
@@ -173,18 +174,24 @@ var featured = []MarketServer{
 // carried to another computer, which reads it as its own (self_here.go).
 const magpieCommand = "magpie"
 
-// selfServerName is the name magpie's own image generation server is written
-// under, in every agent's config.
-const selfServerName = "magpie-image"
+// selfServerName is the product's own image generation server name in each
+// agent's config.
+const selfServerName = product.ID + "-image"
+
+func selfCommandName() string { return product.ID }
 
 // selfServer is magpie's own image generation server: generate_image makes
 // an image with the model Settings → Models → Images → Image generation names, saved
 // in the project. It costs what the model does, so it is given only to the
 // agents picked for it.
 func selfServer() MarketServer {
-	m := localServer(selfServerName, "Magpie Image", "Magpie", "https://usemagpie.ai/favicon.png", "https://usemagpie.ai",
-		"Generate and edit images with the image model set in Magpie (Settings › Models › Images), and make short videos with a video model set up in Magpie (Grok Imagine, Seedance), saved in the project.", magpieCommand, []string{"mcp", "image"})
-	m.OptIn = true
+	icon := "https://usemagpie.ai/favicon.png"
+	if product.Jellytool {
+		icon = "https://www.jellytoken.com/apple-icon.png?868a7d61201ed975"
+	}
+	m := localServer(selfServerName, product.Text("Magpie Image"), product.Text("Magpie"), icon, product.Website,
+		product.Text("Generate and edit images with the image model set in Magpie (Settings › Models › Images), and make short videos with a video model set up in Magpie (Grok Imagine, Seedance), saved in the project."), selfCommandName(), []string{"mcp", "image"})
+	m.OptIn = !product.Jellytool
 	return m
 }
 
@@ -299,10 +306,38 @@ func nowledgeServer() MarketServer {
 		Input{Key: "Authorization", Where: "header", Label: "API key", Description: "Optional — only for a Mem reached over Access Anywhere", Placeholder: "nmem_…", Secret: true, format: "Bearer {}"})
 }
 
+// EnsureImageServer gives a Jellytool build its image server on every
+// compatible agent once. An existing server with the same mcp image command,
+// including the old magpie-image name, is kept as the user's entry.
+func EnsureImageServer() (*Result, error) {
+	if !product.Jellytool {
+		return nil, nil
+	}
+	m := selfServer()
+	l, err := load()
+	if err != nil {
+		return nil, err
+	}
+	if l.haveServer(&m.server) != "" {
+		if l.healed {
+			name := l.haveServer(&m.server)
+			s := *l.server(name)
+			return SaveServer(name, s)
+		}
+		return nil, nil
+	}
+	for _, f := range foundServers(l) {
+		if serverKey(f.Server) == serverKey(&m.server) {
+			return ImportServer(f.Server.Name)
+		}
+	}
+	return InstallServer(m.ID, nil, nil)
+}
+
 // selfCommand is the server's command and env for this magpie: its binary
 // by full path, and the gateway's address when it isn't the default one.
 func selfCommand(s *Server) {
-	if s.Command != magpieCommand {
+	if s.Command != magpieCommand && s.Command != selfCommandName() {
 		return
 	}
 	if exe, err := selfExe(); err == nil {

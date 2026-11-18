@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/update"
 )
 
@@ -39,7 +40,12 @@ func ownServer(s *Server) bool {
 func magpieBinary(cmd string) bool {
 	base := strings.ToLower(cmd[strings.LastIndexAny(cmd, `/\`)+1:])
 	base = strings.TrimSuffix(base, ".exe")
-	return base == magpieCommand || strings.HasPrefix(base, magpieCommand+"-")
+	for _, name := range []string{magpieCommand, product.ID} {
+		if base == name || strings.HasPrefix(base, name+"-") {
+			return true
+		}
+	}
+	return false
 }
 
 // runsHere is whether cmd is a program by full path on this computer.
@@ -51,12 +57,25 @@ func runsHere(cmd string) bool {
 	return err == nil && !fi.IsDir()
 }
 
+// staleJellytoolDevPath is a local development bundle that run.py replaced
+// with the stable ~/Applications/Jellytool.app copy. It is safe to migrate
+// these paths; an installed app or another local build remains the user's
+// choice.
+func staleJellytoolDevPath(cmd string) bool {
+	if !product.Jellytool {
+		return false
+	}
+	p := filepath.ToSlash(cmd)
+	return strings.Contains(p, "/.cache/jellytool-build/artifacts/") &&
+		strings.HasSuffix(p, "/Jellytool.app/Contents/MacOS/jellytool")
+}
+
 // heal points magpie's own servers whose program isn't here at this magpie.
 func (l *Library) heal() {
 	l.healMarketLines() // a market server's line that never started (market_launch.go)
 	exe := ""
 	for _, s := range l.MCP {
-		if s == nil || !ownServer(s) || runsHere(s.Command) {
+		if s == nil || !ownServer(s) || runsHere(s.Command) && !staleJellytoolDevPath(s.Command) {
 			continue
 		}
 		if exe == "" {
@@ -67,6 +86,7 @@ func (l *Library) heal() {
 			exe = e
 		}
 		s.Command = exe
+		l.healed = true
 	}
 }
 
@@ -74,7 +94,7 @@ func (l *Library) heal() {
 func carried(s *Server) *Server {
 	c := *s
 	if ownServer(s) {
-		c.Command = magpieCommand
+		c.Command = selfCommandName()
 	}
 	return &c
 }

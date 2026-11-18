@@ -30,6 +30,7 @@ import (
 	"github.com/yetone/magpie/internal/lastgood"
 	"github.com/yetone/magpie/internal/lazyre"
 	"github.com/yetone/magpie/internal/netproxy"
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/steady"
 )
@@ -772,9 +773,11 @@ type file struct {
 	// Searches are the web search APIs a model's search goes to when no
 	// provider can search (see search_api.go).
 	Searches []SearchAPI `json:"searches,omitempty"`
-	// NoAutoGroups: the user turned off the groups magpie finds on its
-	// own (SetAutoGroups); the groups they made or changed stay.
-	NoAutoGroups bool `json:"noAutoGroups,omitempty"`
+	// NoAutoGroups: whether the user turned off the groups magpie finds on
+	// its own (SetAutoGroups); nil leaves Jellytool's new users off by
+	// default, while the user's explicit choice is kept. The groups they
+	// made or changed stay.
+	NoAutoGroups *bool `json:"noAutoGroups,omitempty"`
 	// AutoGroupSkip are the providers, by id, the user keeps out of the
 	// groups magpie finds (SetAutoGroupSkip; chenxiang0010 on Discord):
 	// their models are in none, so a model only one other provider serves
@@ -1111,6 +1114,10 @@ func ownOf(f file) (own []Provider, picks map[string]Provider) {
 // the provider keeps the same settings (#1899: a second WorkBuddy AI
 // account queued 62s with the wait set to 1s).
 func withPicks(a, pk Provider) Provider {
+	// Jellytool leaves official subscriptions off until the user saves a choice.
+	if product.Jellytool && pk.ID == "" && slices.Contains(accountIDs, a.ID) {
+		pk.Off = true
+	}
 	return accountSettings(a, pk)
 }
 

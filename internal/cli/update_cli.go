@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -46,7 +47,7 @@ func updateAutoCmd(args []string) error {
 		default:
 			m, ok := updateEveries[a]
 			if !ok {
-				return fmt.Errorf("magpie update auto takes on, off, download, notify or how often (30m, 1h, 6h or 24h), not %q", a)
+				return fmt.Errorf(product.Text("magpie update auto takes on, off, download, notify or how often (30m, 1h, 6h or 24h), not %q"), a)
 			}
 			s.UpdateEvery = m
 		}
@@ -83,7 +84,7 @@ func updateAutoCmd(args []string) error {
 func updateMirrorCmd(args []string) error {
 	s := settings.Load()
 	if len(args) > 1 {
-		return fmt.Errorf("magpie update mirror takes one prefix, or off")
+		return fmt.Errorf("%s", product.Text("magpie update mirror takes one prefix, or off"))
 	}
 	if len(args) == 1 {
 		switch m := strings.TrimSpace(args[0]); m {
@@ -115,7 +116,7 @@ func updateMirrorCmd(args []string) error {
 func updateChannelCmd(args []string) error {
 	s := settings.Load()
 	if len(args) > 1 {
-		return fmt.Errorf("magpie update channel takes stable, daily or every")
+		return fmt.Errorf("%s", product.Text("magpie update channel takes stable, daily or every"))
 	}
 	if len(args) == 1 {
 		switch strings.ToLower(strings.TrimSpace(args[0])) {
@@ -126,7 +127,7 @@ func updateChannelCmd(args []string) error {
 		case "every", "all":
 			s.UpdateChannel = ""
 		default:
-			return fmt.Errorf("magpie update channel takes stable, daily or every, not %q", args[0])
+			return fmt.Errorf(product.Text("magpie update channel takes stable, daily or every, not %q"), args[0])
 		}
 		if err := settings.Save(s); err != nil {
 			return err
@@ -213,7 +214,7 @@ func updateCmd(args []string) error {
 		return updateChannelCmd(args[2:])
 	}
 	if len(args) > 2 || len(args) == 2 && args[1] != "check" {
-		return fmt.Errorf("usage: magpie update [check] [--proxy <url>] [--mirror <prefix>] [--addr host:port] [--force]")
+		return fmt.Errorf("%s", product.Text("usage: magpie update [check] [--proxy <url>] [--mirror <prefix>] [--addr host:port] [--force]"))
 	}
 	// the check is bounded; the download after it is not: a slow one
 	// still moving goes on, and one that stops sending is ended by
@@ -246,11 +247,11 @@ func updateCmd(args []string) error {
 		return nil
 	}
 	if !update.Released(version) {
-		return fmt.Errorf("this magpie was built from source; update it the way you built it, or get the release from %s", update.Site)
+		return fmt.Errorf(product.Text("this magpie was built from source; update it the way you built it, or get the release from %s"), update.Site)
 	}
 	if app := update.Bundle(); app != "" {
 		if update.Stuck(app) != "" {
-			return fmt.Errorf("%s can't be replaced where it is; move magpie to Applications, or download the new version from %s", tilde(app), update.Site)
+			return fmt.Errorf(product.Text("%s can't be replaced where it is; move magpie to Applications, or download the new version from %s"), tilde(app), update.Site)
 		}
 		fmt.Println(muted.Render("  downloading " + update.AppAsset() + via(ctx) + " …"))
 		staged, err := update.Stage(ctx, rel, app)
@@ -278,14 +279,14 @@ func updateCmd(args []string) error {
 	// the Docker image's /magpie, run as nonroot: the image is what is
 	// updated, and a replace would only fail with "permission denied"
 	if exe, err := updateExecutable(); err == nil && !update.Writable(filepath.Dir(exe)) && !updateCanElevate() && updateInContainer() {
-		return fmt.Errorf("this magpie runs in a container and can't replace itself; pull the new image (docker pull ghcr.io/yetone/magpie:latest) and recreate the container")
+		return fmt.Errorf("%s", product.Text("this magpie runs in a container and can't replace itself; pull the new image (docker pull ghcr.io/yetone/magpie:latest) and recreate the container"))
 	}
 	// a package manager's binary (Homebrew's, pacman's magpie-bin from
 	// the AUR, a .deb's): replaced under it, the manager's database names
 	// the old version and its next upgrade writes over this one
 	if exe, err := updateExecutable(); err == nil {
 		if p := updatePackagedBy(exe); p != nil {
-			return fmt.Errorf("%s", p.Say())
+			return fmt.Errorf("%s", product.Text(p.Say()))
 		}
 	}
 	fmt.Println(muted.Render("  downloading " + update.BinaryAsset() + via(ctx) + " …"))

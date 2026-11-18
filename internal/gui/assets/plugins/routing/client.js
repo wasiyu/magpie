@@ -109,7 +109,7 @@ function routingPage(part) {
   logo.setAttribute("class", "rt-bird");
   logo.innerHTML = '<use href="#bird"/>';
   const hubSub = el("small"), chip = el("i");
-  hub.append(logo, el("b", "", "magpie"), hubSub, chip);
+  hub.append(logo, el("b", "", window.bootPrefs?.jellytool ? "Jellytool" : "magpie"), hubSub, chip);
   const list = el("ol", "rt-accts");
   // the magpies fly over the nodes, the wires run under them
   const sky = document.createElementNS(NS, "svg");
@@ -6917,7 +6917,7 @@ function routingPage(part) {
     const shown = words.length ? all.filter((g) => gEdit?.id === g.id || groupMatches(g, words)) : all;
     if (gSel) gSel = new Set([...gSel].filter((id) => shown.some((g) => g.id === id)));
     if (gSel && !all.length) gSel = null;
-    const own = all.some((g) => !g.auto), tpls = groups.templates || [];
+    const own = all.some((g) => !g.auto), tpls = groups.found === false ? [] : groups.templates || [];
     if (!filterOnly) {
       // the page's toolbar (11-06): the filter and how many there are on the
       // left, what makes or picks groups on the right, New group the one

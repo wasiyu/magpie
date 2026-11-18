@@ -32,6 +32,7 @@ import (
 
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/lazyre"
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/settings"
 )
 
@@ -597,7 +598,7 @@ func buildGroupsIn(entries []Entry) []Group {
 	hidden := map[string]bool{}
 	var have map[string]bool // the providers magpie has, switched off or not
 	var found []Group        // the groups magpie finds, for a changed one to follow
-	if !f.NoAutoGroups {
+	if autoGroupsOn(f) {
 		found = foundGroups(entries)
 	}
 	for _, g := range f.Groups {
@@ -619,7 +620,7 @@ func buildGroupsIn(entries []Entry) []Group {
 	if !served(f.Groups) { // plugins/groups is off: the user's own aren't served
 		out = slices.DeleteFunc(out, func(g Group) bool { return !g.Auto })
 	}
-	if !f.NoAutoGroups {
+	if autoGroupsOn(f) {
 		for _, g := range found {
 			if slices.ContainsFunc(out, func(o Group) bool { return o.ID == g.ID }) {
 				continue // the user changed it: theirs now
@@ -778,10 +779,19 @@ func (g Group) own() Group {
 	return g
 }
 
+// autoGroupsOn reports whether magpie finds groups on its own for a saved
+// providers file. An unset choice keeps them off for a new Jellytool user;
+// the existing magpie default remains on.
+func autoGroupsOn(f file) bool {
+	if f.NoAutoGroups != nil {
+		return !*f.NoAutoGroups
+	}
+	return !product.Jellytool
+}
+
 // AutoGroupsOn reports whether magpie finds groups on its own: a model
-// more than one provider serves is a group of them (autoGroups). It is on
-// until the user turns it off.
-func AutoGroupsOn() bool { return !load().NoAutoGroups }
+// more than one provider serves is a group of them (autoGroups).
+func AutoGroupsOn() bool { return autoGroupsOn(load()) }
 
 // SetAutoGroups turns the groups magpie finds on its own on or off, all of
 // them at once (蓝猫 on Discord: they could only be removed one by one).
@@ -796,7 +806,7 @@ func SetAutoGroups(on bool) error {
 	if err != nil {
 		return err
 	}
-	if f.NoAutoGroups == !on {
+	if autoGroupsOn(f) == on {
 		return nil
 	}
 	if !on {
@@ -823,7 +833,8 @@ func SetAutoGroups(on bool) error {
 			return fmt.Errorf("%s: take it out, or change it to make it yours, first", strings.Join(held, ", "))
 		}
 	}
-	f.NoAutoGroups = !on
+	choice := !on
+	f.NoAutoGroups = &choice
 	return store(f)
 }
 
@@ -970,7 +981,7 @@ func AutoStandInFor(agent, id string) (string, bool) {
 	if _, ok := groupOf(groupsIn(entries), gid); ok {
 		return "", false
 	}
-	if !f.NoAutoGroups && slices.ContainsFunc(f.Groups, func(g Group) bool { return g.ID == gid }) {
+	if autoGroupsOn(f) && slices.ContainsFunc(f.Groups, func(g Group) bool { return g.ID == gid }) {
 		return "", false // removed, or the user's
 	}
 	var first, kept string

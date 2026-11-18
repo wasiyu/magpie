@@ -468,7 +468,7 @@ func (o ordered) MarshalYAML() (any, error) {
 // magpie-image's video tool needs, at least two minutes for
 // magpie-browser's, magpie-web-search's and magpie-vision's, else def.
 func selfTimeout(s *Server, def int) int {
-	if s.Name == selfServerName && s.Command != "" {
+	if isSelf(s) && s.Command != "" {
 		return int(imagemcp.ToolTimeout().Seconds())
 	}
 	if (s.Name == searchServerName || s.Name == visionServerName) && s.Command != "" {

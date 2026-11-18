@@ -2,11 +2,16 @@
 
 package cli
 
-import "errors"
+import (
+	"errors"
+	"github.com/yetone/magpie/internal/product"
+)
 
 const hasGUI = false
 
-func runGUI(bool, string) error { return errors.New("this build has no GUI; run `magpie tui`") }
+func runGUI(bool, string) error {
+	return errors.New(product.Text("this build has no GUI; run `magpie tui`"))
+}
 
 func runPanel() error { return runGUI(false, "") }
 

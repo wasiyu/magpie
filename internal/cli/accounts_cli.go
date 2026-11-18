@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"os"
 	"runtime"
 	"slices"
@@ -143,7 +144,7 @@ func accountsCmd(args []string) error {
 			case len(args) == 4 && strings.HasPrefix(args[3], "--host="):
 				host = strings.TrimPrefix(args[3], "--host=")
 			case len(args) != 3:
-				return fmt.Errorf("usage: magpie accounts add copilot [--host <name>.ghe.com]")
+				return fmt.Errorf("%s", product.Text("usage: magpie accounts add copilot [--host <name>.ghe.com]"))
 			}
 			h, err := provider.CopilotHost(host)
 			if err != nil {
@@ -599,7 +600,7 @@ func importAccounts(args []string) error {
 	case "antigravity", "ag":
 		id = "antigravity"
 	case "factory", "droid":
-		return fmt.Errorf("Factory runs on its plugin now: add the key with magpie accounts add factory")
+		return fmt.Errorf("%s", product.Text("Factory runs on its plugin now: add the key with magpie accounts add factory"))
 	default:
 		// a plugin's subscription whose plugin reads such files itself
 		// (auth.import): WorkBuddy's sign-in file (marchen_cc on X)
@@ -1028,7 +1029,7 @@ func accountNamed(agent, user string) (string, error) {
 	case len(same) > 1:
 		return "", fmt.Errorf("%s has %d accounts of %s: %q — name one in full", agent, len(same), user, same)
 	case len(names) == 0:
-		return "", fmt.Errorf("no saved %s accounts · add one: magpie accounts add %s", agent, agent)
+		return "", fmt.Errorf(product.Text("no saved %s accounts · add one: magpie accounts add %s"), agent, agent)
 	}
 	return "", fmt.Errorf("no saved %s account %q · its accounts: %q", agent, user, names)
 }

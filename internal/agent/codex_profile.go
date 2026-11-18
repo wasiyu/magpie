@@ -10,6 +10,7 @@ import (
 	"github.com/yetone/magpie/internal/codexcat"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/lastgood"
+	"github.com/yetone/magpie/internal/product"
 )
 
 // Codex's profile-only wiring (hpnjstar on X: `codex -p magpie` on magpie,
@@ -34,7 +35,7 @@ const codexProfileFile = magpieID + ".config.toml"
 // the bearer key.
 func codexProviderTable(v1, token string) []edit.KV {
 	return []edit.KV{
-		{Path: "name", Value: "magpie"},
+		{Path: "name", Value: product.Name},
 		{Path: "base_url", Value: v1},
 		{Path: "wire_api", Value: "responses"},
 		{Path: "experimental_bearer_token", Value: token},

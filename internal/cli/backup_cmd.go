@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"maps"
 	"os"
 	"slices"
@@ -32,11 +33,11 @@ func backupCmd(args []string) error {
 		case a == "--sign-ins":
 			signIns = true
 		case strings.HasPrefix(a, "-"):
-			return fmt.Errorf("unknown flag %s (magpie backup [--no-keys] [--no-library] [--no-usage] [--sign-ins] [file])", a)
+			return fmt.Errorf(product.Text("unknown flag %s (magpie backup [--no-keys] [--no-library] [--no-usage] [--sign-ins] [file])"), a)
 		case file == "":
 			file = a
 		default:
-			return errors.New("usage: magpie backup [--no-keys] [--no-library] [--no-usage] [--sign-ins] [file]")
+			return errors.New(product.Text("usage: magpie backup [--no-keys] [--no-library] [--no-usage] [--sign-ins] [file]"))
 		}
 	}
 	if file == "" {
@@ -118,15 +119,15 @@ func restoreCmd(args []string) error {
 		case a == "--no-sign-ins":
 			parts.SignIns = false
 		case strings.HasPrefix(a, "-"):
-			return fmt.Errorf("unknown flag %s (magpie restore [--no-agents] [--no-library] [--no-usage] [--no-sign-ins] <file>)", a)
+			return fmt.Errorf(product.Text("unknown flag %s (magpie restore [--no-agents] [--no-library] [--no-usage] [--no-sign-ins] <file>)"), a)
 		case file == "":
 			file = a
 		default:
-			return errors.New("usage: magpie restore [--no-agents] [--no-library] [--no-usage] [--no-sign-ins] <file>")
+			return errors.New(product.Text("usage: magpie restore [--no-agents] [--no-library] [--no-usage] [--no-sign-ins] <file>"))
 		}
 	}
 	if file == "" {
-		return errors.New("usage: magpie restore [--no-agents] [--no-library] [--no-usage] [--no-sign-ins] <file>")
+		return errors.New(product.Text("usage: magpie restore [--no-agents] [--no-library] [--no-usage] [--no-sign-ins] <file>"))
 	}
 	data, err := os.ReadFile(file)
 	if err != nil {

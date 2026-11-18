@@ -116,6 +116,9 @@ type Library struct {
 	// stored are the skills this sync made sure of in a WSL distro's
 	// store, by path (storeSkill), with what went wrong
 	stored map[string]error
+	// healed says load changed an own server's executable path; the caller
+	// that owns the load can persist that repair and sync it to agents.
+	healed bool
 }
 
 // Instructions are one shared text, and for each agent whether it gets it

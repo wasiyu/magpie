@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"runtime"
 
 	"github.com/yetone/magpie/internal/autostart"
@@ -10,7 +11,7 @@ import (
 // magpie autostart [on|off]: whether magpie opens at login, in the tray.
 func autostartCmd(args []string) error {
 	if len(args) > 1 {
-		return fmt.Errorf("usage: magpie autostart [on|off]")
+		return fmt.Errorf("%s", product.Text("usage: magpie autostart [on|off]"))
 	}
 	if len(args) == 1 {
 		switch args[0] {
@@ -19,7 +20,7 @@ func autostartCmd(args []string) error {
 				return err
 			}
 		default:
-			return fmt.Errorf("usage: magpie autostart [on|off]")
+			return fmt.Errorf("%s", product.Text("usage: magpie autostart [on|off]"))
 		}
 	}
 	switch autostart.Enabled() {

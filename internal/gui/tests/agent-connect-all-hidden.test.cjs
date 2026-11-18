@@ -89,7 +89,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           }
           await browser.close();
         });
-        await page.goto("http://magpie.test/");
+        await page.goto("http://magpie.test/" + (guide ? "" : "?view=agents"));
         const row = page.locator('.row.agent[data-id="grok"]');
         const sw = row.locator(".ag-conn");
         const chip = page.locator('.guide-agent[data-id="grok"]');

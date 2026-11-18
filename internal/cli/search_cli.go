@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"slices"
 	"strconv"
 	"strings"
@@ -119,7 +120,7 @@ func searchCmd(args []string) error {
 		return nil
 	case "add", "set":
 		if len(args) < 2 {
-			return fmt.Errorf("magpie search add <api> <key> [url=<address>]")
+			return fmt.Errorf("%s", product.Text("magpie search add <api> <key> [url=<address>]"))
 		}
 		a := provider.SearchAPI{Vendor: strings.ToLower(args[1])}
 		// a new key alone keeps the address set before (#1580); url= with
@@ -135,7 +136,7 @@ func searchCmd(args []string) error {
 			} else if a.Key == "" {
 				a.Key = v
 			} else {
-				return fmt.Errorf("magpie search add <api> <key> [url=<address>] [pick=turns|order]")
+				return fmt.Errorf("%s", product.Text("magpie search add <api> <key> [url=<address>] [pick=turns|order]"))
 			}
 		}
 		if i := slices.IndexFunc(provider.StoredSearchAPIs(), func(x provider.SearchAPI) bool { return x.Vendor == a.Vendor }); i >= 0 && !urlGiven {
@@ -150,7 +151,7 @@ func searchCmd(args []string) error {
 		return nil
 	case "on", "off":
 		if len(args) != 2 {
-			return fmt.Errorf("magpie search %s <api>", args[0])
+			return fmt.Errorf(product.Text("magpie search %s <api>"), args[0])
 		}
 		if err := provider.SwitchSearchAPI(strings.ToLower(args[1]), args[0] == "on"); err != nil {
 			return err
@@ -165,7 +166,7 @@ func searchCmd(args []string) error {
 		as := provider.StoredSearchAPIs()
 		i := slices.IndexFunc(as, func(x provider.SearchAPI) bool { return len(args) > 1 && x.Vendor == strings.ToLower(args[1]) })
 		if len(args) != 3 || n < 1 || n > len(as) {
-			return fmt.Errorf("magpie search move <api> <n>, n from 1 to %d", len(as))
+			return fmt.Errorf(product.Text("magpie search move <api> <n>, n from 1 to %d"), len(as))
 		}
 		if i < 0 {
 			return fmt.Errorf("no %s search API is set up", strings.ToLower(args[1]))
@@ -209,7 +210,7 @@ func searchCmd(args []string) error {
 		return nil
 	case "rm", "remove":
 		if len(args) != 2 {
-			return fmt.Errorf("magpie search rm <api>")
+			return fmt.Errorf("%s", product.Text("magpie search rm <api>"))
 		}
 		if err := provider.RemoveSearchAPI(strings.ToLower(args[1])); err != nil {
 			return err
@@ -217,7 +218,7 @@ func searchCmd(args []string) error {
 		fmt.Println(green.Render("✓"), "removed")
 		return nil
 	}
-	return fmt.Errorf("magpie search [add|on|off|move|mix|rm|count] (magpie search help)")
+	return fmt.Errorf("%s", product.Text("magpie search [add|on|off|move|mix|rm|count] (magpie search help)"))
 }
 
 // searchCountCmd is magpie search count (#5545, mdwsk88): with no word it

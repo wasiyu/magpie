@@ -44,6 +44,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -126,7 +127,7 @@ func newMax(home string) *Agent {
 				return write(v != "")
 			},
 			Options: func(map[string]string) []Option {
-				return []Option{{Value: magpieID, Label: "magpie", Icon: "magpie", Note: "every magpie model in NewMax's model picker"}}
+				return []Option{{Value: magpieID, Label: product.Name, Icon: "magpie", Note: "every magpie model in NewMax's model picker"}}
 			},
 		}},
 	}

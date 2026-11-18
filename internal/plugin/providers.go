@@ -19,6 +19,7 @@ import (
 
 	"github.com/yetone/magpie/internal/filememo"
 	"github.com/yetone/magpie/internal/lastgood"
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/steady"
 )
@@ -342,10 +343,19 @@ func forgetProviders() {
 // need be, and keeps the answer for Cached.
 func Providers(ctx context.Context) ([]Provider, error) {
 	var ps []Provider
-	if err := Call(ctx, "providers", listingArgs(), &ps); err != nil {
-		return nil, err
+	if !product.Jellytool || len(Load().Plugins) > 0 {
+		if err := Call(ctx, "providers", listingArgs(), &ps); err != nil {
+			return nil, err
+		}
+		ps = commitProviders(ps, nil)
 	}
-	ps = commitProviders(ps, nil)
+	if product.Jellytool {
+		jps, err := refreshJellytool(ctx)
+		if err != nil {
+			return nil, err
+		}
+		ps = append(jps, ps...)
+	}
 	return ps, nil
 }
 
@@ -590,6 +600,12 @@ func keepUnloaded(ps, last []Provider) []Provider {
 // UseCached is for tests: Cached answers with ps, as though the plugins
 // had just been asked, without Bun; nil forgets them.
 func UseCached(ps []Provider) {
+	if product.Jellytool {
+		jellytoolCatalog.Lock()
+		jellytoolCatalog.providers = ps
+		jellytoolCatalog.Unlock()
+		return
+	}
 	provMu.Lock()
 	provCache, provGood, provTried = ps, ps != nil, ps != nil
 	// a refresh in flight began under what this replaces: what it read
@@ -715,6 +731,9 @@ func Cached() []Provider {
 		ps = savedProviders()
 	}
 	if len(l.Plugins) == 0 {
+		if product.Jellytool {
+			return jellytoolCached()
+		}
 		return nil
 	}
 	auth := readAuth()
@@ -763,6 +782,9 @@ func Cached() []Provider {
 		if start {
 			go refreshProvidersInBackground(ctx, epoch)
 		}
+	}
+	if product.Jellytool {
+		out = append(jellytoolCached(), out...)
 	}
 	return out
 }
@@ -1073,6 +1095,9 @@ func Finish(ctx context.Context, session, code string) (Saved, error) {
 // APIKey signs in to account (a key, or NewAccount) with a key, as an
 // "api" method does, through the proxy ctx names.
 func APIKey(ctx context.Context, provider string, method int, inputs map[string]string, key, account string) (Saved, error) {
+	if product.Jellytool && provider == "jellytoken" {
+		return jellytoolAPIKey(ctx, provider, method, key)
+	}
 	var r struct {
 		OK    bool   `json:"ok"`
 		Error string `json:"error"`
@@ -1140,6 +1165,9 @@ func InstallCLI(ctx context.Context, provider string) error {
 // SignOut forgets one account of the provider's, every one when account
 // is "".
 func SignOut(ctx context.Context, provider, account string) error {
+	if product.Jellytool && provider == "jellytoken" {
+		return jellytoolCall(ctx, "signOut", map[string]any{"provider": provider, "account": account}, nil)
+	}
 	if Running() {
 		return Call(ctx, "signOut", map[string]any{"provider": provider, "account": account}, nil)
 	}

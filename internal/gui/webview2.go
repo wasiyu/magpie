@@ -2,6 +2,7 @@ package gui
 
 import (
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -37,7 +38,7 @@ func webView2Notice(lang string) (title, body string) {
 	if !ok {
 		t = webView2Words["en"]
 	}
-	return t[0], fmt.Sprintf(t[1], webView2Page)
+	return product.Text(t[0]), fmt.Sprintf(product.Text(t[1]), webView2Page)
 }
 
 var webView2Words = map[string][2]string{

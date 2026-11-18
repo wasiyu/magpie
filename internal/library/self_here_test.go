@@ -179,8 +179,8 @@ func TestCarriedOwnServerIsEachComputersMagpie(t *testing.T) {
 		t.Fatalf("one library carried two ways:\n%s\n%s", a, b)
 	}
 	for _, s := range onMac.MCP {
-		if s.Name == selfServerName && s.Command != magpieCommand {
-			t.Errorf("carried as %q, want %q", s.Command, magpieCommand)
+		if s.Name == selfServerName && s.Command != selfCommandName() {
+			t.Errorf("carried as %q, want %q", s.Command, selfCommandName())
 		}
 		if s.Name == "fs" && s.Command != "npx" {
 			t.Errorf("the user's server carried as %q", s.Command)
@@ -199,7 +199,7 @@ func TestCarriedOwnServerIsEachComputersMagpie(t *testing.T) {
 		t.Error("put and carried again, the bundle changed: the next sync would send it back")
 	}
 
-	// a bundle from a magpie before #1439, with the Mac's path in it
+	// a bundle from a product before #1439, with the Mac's path in it
 	old := *onMac
 	old.MCP = []*Server{{Name: selfServerName, Transport: "stdio", Command: "/Volumes/gone-1439/Magpie.app/Contents/MacOS/magpie", Args: []string{"mcp", "image"}, Agents: []string{"codex"}}}
 	ok(t)(Put(&old))

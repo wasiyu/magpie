@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"io"
 	"net/http"
 	"os"
@@ -40,11 +41,11 @@ func heapCmd(args []string) error {
 	for _, a := range args {
 		switch {
 		case strings.HasPrefix(a, "-") && a != "-":
-			return fmt.Errorf("unknown flag %s: nothing was written (magpie heap [<file>])", a)
+			return fmt.Errorf(product.Text("unknown flag %s: nothing was written (magpie heap [<file>])"), a)
 		case a == "-" || strings.TrimSpace(a) == "":
-			return fmt.Errorf("%q is not a file name: nothing was written (magpie heap [<file>])", a)
+			return fmt.Errorf(product.Text("%q is not a file name: nothing was written (magpie heap [<file>])"), a)
 		case file != "":
-			return errors.New("magpie heap takes one file: nothing was written (magpie heap [<file>])")
+			return errors.New(product.Text("magpie heap takes one file: nothing was written (magpie heap [<file>])"))
 		default:
 			file = a
 		}
@@ -59,7 +60,7 @@ func heapCmd(args []string) error {
 	f, err := os.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("%s is there already: name another file (magpie heap <file>)", file)
+			return fmt.Errorf(product.Text("%s is there already: name another file (magpie heap <file>)"), file)
 		}
 		return err
 	}
@@ -88,7 +89,7 @@ func fetchHeap(base string) ([]byte, gateway.HeapStats, error) {
 	c := &http.Client{Timeout: heapWait}
 	res, err := c.Get(base + gateway.HeapPath)
 	if err != nil {
-		return nil, st, fmt.Errorf("no magpie answers at %s, so there is nothing to profile: is magpie running? (%v)", base, err)
+		return nil, st, fmt.Errorf(product.Text("no magpie answers at %s, so there is nothing to profile: is magpie running? (%v)"), base, err)
 	}
 	defer res.Body.Close()
 	body, err := io.ReadAll(res.Body)
@@ -96,7 +97,7 @@ func fetchHeap(base string) ([]byte, gateway.HeapStats, error) {
 		return nil, st, fmt.Errorf("the profile from %s was cut off: %w", base, err)
 	}
 	if res.StatusCode == http.StatusNotFound {
-		return nil, st, fmt.Errorf("the magpie at %s is older than this one and has no heap profile: update it, then run magpie heap again", base)
+		return nil, st, fmt.Errorf(product.Text("the magpie at %s is older than this one and has no heap profile: update it, then run magpie heap again"), base)
 	}
 	if res.StatusCode != http.StatusOK {
 		var e struct {
@@ -108,13 +109,13 @@ func fetchHeap(base string) ([]byte, gateway.HeapStats, error) {
 		if json.Unmarshal(body, &e) == nil && e.Error.Message != "" {
 			msg = e.Error.Message
 		}
-		return nil, st, fmt.Errorf("the magpie at %s answered %s: %s", base, res.Status, msg)
+		return nil, st, fmt.Errorf(product.Text("the magpie at %s answered %s: %s"), base, res.Status, msg)
 	}
 	if !bytes.HasPrefix(body, []byte{0x1f, 0x8b}) {
-		return nil, st, fmt.Errorf("what %s answered is not a heap profile (%d bytes): is it magpie?", base, len(body))
+		return nil, st, fmt.Errorf(product.Text("what %s answered is not a heap profile (%d bytes): is it magpie?"), base, len(body))
 	}
 	if err := json.Unmarshal([]byte(res.Header.Get(gateway.HeapStatsHeader)), &st); err != nil {
-		return nil, st, fmt.Errorf("the magpie at %s sent no memory numbers with its profile: %v", base, err)
+		return nil, st, fmt.Errorf(product.Text("the magpie at %s sent no memory numbers with its profile: %v"), base, err)
 	}
 	return body, st, nil
 }

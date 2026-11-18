@@ -249,7 +249,7 @@ async function confirmUpdate(u, go, b) {
   const bar = el("div", "bar");
   const later = el("button", "text", t("Later"));
   later.onclick = cancelAsk;
-  const ok = el("button", "text primary", t("Restart to update"));
+  const ok = el("button", "text primary", t(u.manual ? "Download" : "Restart to update"));
   ok.onclick = (e) => { e.stopPropagation(); closeConfirmAsk(); go(); };
   bar.append(el("span", "grow"), later, ok);
   ed.append(head, box, bar);

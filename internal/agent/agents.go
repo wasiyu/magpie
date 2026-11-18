@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"io/fs"
 	"maps"
 	"os"
@@ -194,7 +195,7 @@ func codexNoAccount() bool {
 // others are clients that reach the gateway without being agents magpie
 // sets up: known only by their requests, to be drawn with a logo.
 var others = []*Agent{
-	{ID: "magpie", Name: "magpie", Icon: "magpie", UA: []string{"magpie"}},
+	{ID: "magpie", Name: product.Name, Icon: "magpie", UA: []string{"magpie"}},
 	{ID: "curl", Name: "curl", Icon: "curl", UA: []string{"curl"}},
 	// PI-Desktop (vastsa/PI-Desktop) runs Pi's own library, which says
 	// "pi (…)"; given a User-Agent of its own in its provider's settings
@@ -722,7 +723,14 @@ func magpieProviderJSONAt(shape, catalog, gw string) any {
 			if openCodeReasons(m) {
 				e["reasoning"] = true
 			}
-			e["variants"] = openCodeVariants(m.Efforts, m.CodexFast)
+			variants := openCodeVariants(m.Efforts, m.CodexFast)
+			if product.Jellytool && slices.Contains(m.APIs, string(provider.Responses)) {
+				e["provider"] = map[string]any{"npm": "@ai-sdk/openai"}
+				for i := range variants {
+					variants[i].v = openCodeResponsesVariant(variants[i].k)
+				}
+			}
+			e["variants"] = variants
 			// OpenCode counts a session's cost by it, in USD per million
 			// tokens (models.dev's cost; OpenCode 2.0.25 reads input,
 			// output, cache_read, cache_write), and counted 0 without it
@@ -738,7 +746,7 @@ func magpieProviderJSONAt(shape, catalog, gw string) any {
 		// OpenCode 1 its camelCase promptCacheKey (the gateway's
 		// cacheKeyCamel), and 2.0.25 leaves it be. A setCacheKey of the
 		// user's own stays (openCodeKept)
-		return map[string]any{"npm": "@ai-sdk/openai-compatible", "name": "magpie",
+		return map[string]any{"npm": "@ai-sdk/openai-compatible", "name": product.Name,
 			"options": map[string]any{"baseURL": gw + "/v1", "apiKey": openCodeKeyAt(catalog, gw), "setCacheKey": true}, "models": ms}
 	case "crush":
 		var ms []map[string]any
@@ -772,7 +780,7 @@ func magpieProviderJSONAt(shape, catalog, gw string) any {
 		if ms == nil {
 			ms = []map[string]any{}
 		}
-		return map[string]any{"type": "openai", "name": "magpie", "base_url": gw + "/v1", "api_key": keyAt(gw), "models": ms}
+		return map[string]any{"type": "openai", "name": product.Name, "base_url": gw + "/v1", "api_key": keyAt(gw), "models": ms}
 	case "pi":
 		return piProviderOn(catalog, models, gw, "")
 	}
@@ -848,7 +856,7 @@ func openCodeKept(path string, value func() any) func() any {
 				continue
 			}
 			for _, p := range objectPairs(was.Variants) {
-				if sameJSON(string(p.v.(json.RawMessage)), openCodeVariant(p.k)) {
+				if sameJSON(string(p.v.(json.RawMessage)), openCodeVariant(p.k)) || product.Jellytool && sameJSON(string(p.v.(json.RawMessage)), openCodeResponsesVariant(p.k)) {
 					continue
 				}
 				if i := slices.IndexFunc(ours, func(o jsonPair) bool { return o.k == p.k }); i >= 0 {
@@ -1133,6 +1141,17 @@ func openCodeVariant(name string) map[string]any {
 	if fast {
 		v["service_tier"] = "priority"
 		v["extraBody"] = map[string]any{"service_tier": "priority"}
+	}
+	return v
+}
+
+// Responses' SDK reads serviceTier; Chat's compatibility body uses service_tier.
+func openCodeResponsesVariant(name string) map[string]any {
+	v := openCodeVariant(name)
+	if tier, ok := v["service_tier"]; ok {
+		v["serviceTier"] = tier
+		delete(v, "service_tier")
+		delete(v, "extraBody")
 	}
 	return v
 }

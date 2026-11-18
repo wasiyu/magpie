@@ -1,5 +1,18 @@
 # Library: instructions, MCP servers, skills, hooks, subagents, slash commands, RTK and billion-context
 
+In a Jellytool build the built-in image server is `jellytool-image` and is
+given to every compatible local agent once at startup; an existing
+`magpie-image` entry for the same `mcp image` command is kept and not
+duplicated. The command is the current product binary (`jellytool mcp image`),
+while the image MCP tools and Gateway route remain compatible with Magpie.
+The image tool accepts a per-call `model` (a bare name or `provider/model`) for
+generation and editing; omitted, it uses Settings' image model. This does not
+change the saved default. See [image MCP routing](gateway-routing.md) for model
+resolution and the Off behavior.
+New MCP OAuth registrations name the client `Jellytool` with Jellytoken's
+website. The hub's `magpie` key, saved OAuth client ids and third-party server
+metadata are unchanged. See [display branding](gui-shell.md#jellytool-display-branding).
+
 The library keeps what every agent should know in one place: the
 instructions each agent reads before a conversation, the MCP servers it can
 call, the skills it can load, the hooks it runs at points of its turn, and

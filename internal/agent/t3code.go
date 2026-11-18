@@ -53,6 +53,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/yetone/magpie/internal/product"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -199,7 +200,7 @@ func t3code(home string) *Agent {
 				return t3CodexPut(path, gateway.URL())
 			},
 			Options: func(map[string]string) []Option {
-				return []Option{{Value: magpieID, Label: "magpie", Icon: "magpie", Note: "every magpie model in T3 Code twice: magpie on Claude Code, magpie · Codex on Codex; pick one in T3's model picker"}}
+				return []Option{{Value: magpieID, Label: product.Name, Icon: "magpie", Note: "every magpie model in T3 Code twice: magpie on Claude Code, magpie · Codex on Codex; pick one in T3's model picker"}}
 			},
 		}},
 	}

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"strings"
 
 	"github.com/yetone/magpie/internal/provider"
@@ -51,7 +52,7 @@ func modelSpec(args []string) error {
 			return err
 		}
 		if len(gone) == 0 {
-			return fmt.Errorf("%s has no spec of yours to reset — magpie model spec %s says what it has now", ref, typedRef(ref))
+			return fmt.Errorf(product.Text("%s has no spec of yours to reset — magpie model spec %s says what it has now"), ref, typedRef(ref))
 		}
 		fmt.Println(green.Render("✓"), ref, muted.Render("has no "+strings.Join(gone, ", ")+" of yours · it goes by the vendor's list and models.dev"))
 		return nil

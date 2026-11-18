@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"net"
 	"os"
 	"strconv"
@@ -65,24 +66,24 @@ func parseDaemon(args []string) (cmd string, w daemonWeb, err error) {
 		case strings.HasPrefix(a, "--addr="):
 			w.addr = strings.TrimPrefix(a, "--addr=")
 		default:
-			return "", w, fmt.Errorf("magpie daemon %s: unknown %q · %s", cmd, a, daemonUsage)
+			return "", w, fmt.Errorf(product.Text("magpie daemon %s: unknown %q · %s"), cmd, a, daemonUsage)
 		}
 	}
 	if w.addr != "" {
 		if _, _, err := net.SplitHostPort(w.addr); err != nil {
-			return "", w, fmt.Errorf("magpie daemon %s: --addr %s isn't host:port", cmd, w.addr)
+			return "", w, fmt.Errorf(product.Text("magpie daemon %s: --addr %s isn't host:port"), cmd, w.addr)
 		}
 	}
 	// --lan and --addr say where the page is: it is served
 	if lan || w.addr != "" {
 		if cmd == "web" && w.set && !w.on || off {
-			return "", w, fmt.Errorf("magpie daemon %s: --lan and --addr are for a page that is served", cmd)
+			return "", w, fmt.Errorf(product.Text("magpie daemon %s: --lan and --addr are for a page that is served"), cmd)
 		}
 		w.set, w.on = true, true
 	}
 	if off {
 		if w.on {
-			return "", w, errors.New("magpie daemon install: --web and --no-web both")
+			return "", w, errors.New(product.Text("magpie daemon install: --web and --no-web both"))
 		}
 		w.set = true
 	}
@@ -142,7 +143,7 @@ func daemonCmd(args []string) error {
 			return err
 		}
 		if c, _ := gateway.TLSFiles(); noTLS && c != "" {
-			return errors.New("magpie daemon install: --no-tls and a certificate both")
+			return errors.New(product.Text("magpie daemon install: --no-tls and a certificate both"))
 		}
 		args = append([]string{"install"}, rest...)
 	}

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"io"
 	"net/http"
 	"net/url"
@@ -72,7 +73,7 @@ func cpuArgs(args []string) (file string, secs int, err error) {
 		case a == "-" || strings.TrimSpace(a) == "":
 			return "", 0, fmt.Errorf("%q is not a file name: nothing was recorded %s", a, form)
 		case file != "":
-			return "", 0, fmt.Errorf("magpie cpu takes one file: nothing was recorded %s", form)
+			return "", 0, fmt.Errorf(product.Text("magpie cpu takes one file: nothing was recorded %s"), form)
 		default:
 			file = a
 		}
@@ -92,7 +93,7 @@ func cpuCmd(args []string) error {
 	// before the seconds of recording, not after them: the file is
 	// opened without writing over one again once the profile is here
 	if _, err := os.Lstat(file); err == nil {
-		return fmt.Errorf("%s is there already: name another file (magpie cpu <file>)", file)
+		return fmt.Errorf(product.Text("%s is there already: name another file (magpie cpu <file>)"), file)
 	}
 	base := gateway.ClientURL()
 	if err := pingMagpie(base); err != nil {
@@ -107,7 +108,7 @@ func cpuCmd(args []string) error {
 	f, err := os.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("%s is there already: name another file (magpie cpu <file>)", file)
+			return fmt.Errorf(product.Text("%s is there already: name another file (magpie cpu <file>)"), file)
 		}
 		return err
 	}
@@ -135,7 +136,7 @@ func pingMagpie(base string) error {
 	c := &http.Client{Timeout: 5 * time.Second}
 	res, err := c.Get(base + "/")
 	if err != nil {
-		return fmt.Errorf("no magpie answers at %s, so there is nothing to profile: is magpie running? (%v)", base, err)
+		return fmt.Errorf(product.Text("no magpie answers at %s, so there is nothing to profile: is magpie running? (%v)"), base, err)
 	}
 	defer res.Body.Close()
 	io.Copy(io.Discard, io.LimitReader(res.Body, 4096))
@@ -150,7 +151,7 @@ func fetchCPU(base string, secs int) ([]byte, gateway.CPUStats, error) {
 	c := &http.Client{Timeout: time.Duration(secs)*time.Second + 2*time.Minute}
 	res, err := c.Get(base + gateway.CPUPath + "?seconds=" + url.QueryEscape(strconv.Itoa(secs)))
 	if err != nil {
-		return nil, st, fmt.Errorf("no magpie answers at %s, so there is nothing to profile: is magpie running? (%v)", base, err)
+		return nil, st, fmt.Errorf(product.Text("no magpie answers at %s, so there is nothing to profile: is magpie running? (%v)"), base, err)
 	}
 	defer res.Body.Close()
 	body, err := io.ReadAll(res.Body)
@@ -158,7 +159,7 @@ func fetchCPU(base string, secs int) ([]byte, gateway.CPUStats, error) {
 		return nil, st, fmt.Errorf("the profile from %s was cut off: %w", base, err)
 	}
 	if res.StatusCode == http.StatusNotFound {
-		return nil, st, fmt.Errorf("the magpie at %s is older than this one and has no CPU profile: update it, then run magpie cpu again", base)
+		return nil, st, fmt.Errorf(product.Text("the magpie at %s is older than this one and has no CPU profile: update it, then run magpie cpu again"), base)
 	}
 	if res.StatusCode != http.StatusOK {
 		var e struct {
@@ -170,13 +171,13 @@ func fetchCPU(base string, secs int) ([]byte, gateway.CPUStats, error) {
 		if json.Unmarshal(body, &e) == nil && e.Error.Message != "" {
 			msg = e.Error.Message
 		}
-		return nil, st, fmt.Errorf("the magpie at %s answered %s: %s", base, res.Status, msg)
+		return nil, st, fmt.Errorf(product.Text("the magpie at %s answered %s: %s"), base, res.Status, msg)
 	}
 	if !bytes.HasPrefix(body, []byte{0x1f, 0x8b}) {
-		return nil, st, fmt.Errorf("what %s answered is not a CPU profile (%d bytes): is it magpie?", base, len(body))
+		return nil, st, fmt.Errorf(product.Text("what %s answered is not a CPU profile (%d bytes): is it magpie?"), base, len(body))
 	}
 	if err := json.Unmarshal([]byte(res.Header.Get(gateway.CPUStatsHeader)), &st); err != nil {
-		return nil, st, fmt.Errorf("the magpie at %s sent no CPU numbers with its profile: %v", base, err)
+		return nil, st, fmt.Errorf(product.Text("the magpie at %s sent no CPU numbers with its profile: %v"), base, err)
 	}
 	return body, st, nil
 }

@@ -2,9 +2,10 @@ package agent
 
 // WorkBuddy (Tencent's CodeBuddy desktop app) takes models of one's own
 // from ~/.workbuddy/models.json ($WORKBUDDY_CONFIG_DIR if set): a list of
-// OpenAI chat-completions models, or {"models":[…],"availableModels":[…]}
+// custom models (Chat Completions by default), or {"models":[…],"availableModels":[…]}
 // as CodeBuddy Code's CLI writes it. Its own "local models" are entries of
 // the same list (local: true).
+// WorkBuddy 5.9.3 also accepts api: "openai-responses" for its Responses client.
 //
 //	[{"id":"deepseek/pro","name":…,"vendor":"magpie","apiKey":"magpie-workbuddy",
 //	  "url":"http://127.0.0.1:3425/v1/chat/completions",
@@ -34,6 +35,7 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -44,6 +46,7 @@ import (
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/provider"
 )
 
@@ -97,14 +100,19 @@ func workbuddyHere(dir, path string, app desktopApp) bool {
 // app its macOS bundle.
 func workbuddyBuild(id, name, dir string, aliases []string, app desktopApp) *Agent {
 	path := filepath.Join(dir, "models.json")
+	wired := func() bool { return workbuddyWired(path) }
 	write := func(on bool) error { return buddyWrite(path, id, on) }
+	if product.Jellytool && id == "workbuddy" {
+		wired = func() bool { return jellytoolBuddyWired(path, id) }
+		write = func(on bool) error { return jellytoolBuddyWrite(path, id, on) }
+	}
 	return &Agent{
 		ID: id, Name: name, Icon: "workbuddy-color", Aliases: aliases,
 		UA:  []string{id},
 		Dir: dir, Path: path,
 		detect: func() bool { return workbuddyHere(dir, path, app) },
 		Sync: func() error {
-			if !workbuddyWired(path) {
+			if !wired() {
 				return nil
 			}
 			return write(true)
@@ -114,14 +122,14 @@ func workbuddyBuild(id, name, dir string, aliases []string, app desktopApp) *Age
 		Fields: []Field{{
 			Key: "provider", Label: "provider",
 			Get: func() string {
-				if workbuddyWired(path) {
+				if wired() {
 					return magpieID
 				}
 				return ""
 			},
 			Set: func(v string) error { return write(v != "") },
 			Options: func(map[string]string) []Option {
-				return []Option{{Value: magpieID, Label: "magpie", Icon: "magpie", Note: "every magpie model in " + name + "'s picker"}}
+				return []Option{{Value: magpieID, Label: product.Name, Icon: "magpie", Note: product.Text("every magpie model in ") + name + "'s picker"}}
 			},
 		}},
 	}
@@ -160,6 +168,7 @@ type workbuddyEntry struct {
 	Vendor   string `json:"vendor"`
 	Disabled *bool  `json:"disabled"`
 	URL      string `json:"url"`
+	API      string `json:"api"`
 	APIKey   string `json:"apiKey"`
 	// MaxOutputTokens is the reply limit the entry has now: one typed in
 	// WorkBuddy's model settings stays (outputsKept)
@@ -192,7 +201,11 @@ func workbuddyPart(path string) string {
 	}
 	var b strings.Builder
 	for _, raw := range d.models {
-		if _, ok := workbuddyMine(raw); !ok {
+		entry, ok := workbuddyMine(raw)
+		if product.Jellytool {
+			ok = entry.Vendor == "jellytool"
+		}
+		if !ok {
 			continue
 		}
 		var e map[string]any
@@ -232,6 +245,15 @@ func buddyWrite(path, agent string, on bool) error { return buddyWriteAt(path, a
 // view of Windows, which moves, so it is never kept as a magpie of the
 // user's on another machine.
 func buddyWriteAt(path, agent string, on bool, where place) error {
+	return buddyWriteOwned(path, agent, on, where, magpieID)
+}
+
+// buddyWriteOwned replaces only this product's entries in the shared picker.
+func buddyWriteOwned(path, agent string, on bool, where place, vendor string) error {
+	mine := func(raw json.RawMessage) (workbuddyEntry, bool) {
+		var e workbuddyEntry
+		return e, json.Unmarshal(raw, &e) == nil && e.Vendor == vendor
+	}
 	away := where.base != nil
 	d, err := workbuddyRead(path)
 	if err != nil {
@@ -247,7 +269,7 @@ func buddyWriteAt(path, agent string, on bool, where place) error {
 		keys[agentKeyAt(agent, where.gw())] = true
 	}
 	for _, raw := range d.models {
-		if e, ok := workbuddyMine(raw); ok && e.APIKey != "" {
+		if e, ok := mine(raw); ok && e.APIKey != "" {
 			keys[e.APIKey] = true
 		}
 	}
@@ -292,14 +314,14 @@ func buddyWriteAt(path, agent string, on bool, where place) error {
 	off := map[string]bool{}
 	effort := map[string]string{} // the default effort each model was given in WorkBuddy, "" for its Auto
 	haveOut := map[string]int{}   // the reply limit each model has in the file now
-	var remote, remoteKey string
+	var remote, remoteKey, remoteAPI string
 	at := -1 // where magpie's were, which they keep
 	for _, raw := range d.models {
-		e, ok := workbuddyMine(raw)
+		e, ok := mine(raw)
 		// WorkBuddy's model settings save an edited entry under the vendor
 		// of the provider it matches, "Custom" for magpie's: still magpie's
 		// model by its key, which a sync must not add a second time
-		if !ok && e.ID != "" && keys[e.APIKey] {
+		if vendor == magpieID && !ok && e.ID != "" && keys[e.APIKey] {
 			ok = true
 		}
 		if ok {
@@ -308,6 +330,7 @@ func buddyWriteAt(path, agent string, on bool, where place) error {
 			}
 			if !away && remote == "" && onAnotherMachine(e.URL) {
 				remote, remoteKey = e.URL, e.APIKey
+				remoteAPI = e.API
 			}
 			ours = append(ours, e.ID)
 			m := modelOf(e.ID)
@@ -340,6 +363,19 @@ func buddyWriteAt(path, agent string, on bool, where place) error {
 		keptOut := outputsKept(path, wantOut, haveOut)
 		for _, m := range models {
 			e := buddyModel(agent, idOf(m), m.Name, m.Context, keptOut[m.ID], m.Images, m.Efforts)
+			e["vendor"] = vendor
+			if vendor == "jellytool" && slices.Contains(m.APIs, "responses") {
+				// WorkBuddy 5.9.3 selects its Responses client from api, not url.
+				e["api"], e["url"] = "openai-responses", gatewayV1()+"/responses"
+			}
+			if vendor == "jellytool" {
+				for _, raw := range kept {
+					var existing workbuddyEntry
+					if json.Unmarshal(raw, &existing) == nil && existing.ID == idOf(m) {
+						return fmt.Errorf("WorkBuddy already has model %q from another provider", idOf(m))
+					}
+				}
+			}
 			if off[m.ID] {
 				e["disabled"] = true
 			}
@@ -359,6 +395,12 @@ func buddyWriteAt(path, agent string, on bool, where place) error {
 			}
 			if remote != "" {
 				e["url"] = remote
+				if vendor == "jellytool" {
+					delete(e, "api")
+					if remoteAPI != "" {
+						e["api"] = remoteAPI
+					}
+				}
 				if remoteKey != "" {
 					e["apiKey"] = remoteKey
 				}

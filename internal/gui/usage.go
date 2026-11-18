@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -53,16 +54,16 @@ func init() {
 // and the day of now, the moment its rows were read at.
 func csvStamp(p usage.Period, day string, now time.Time) string {
 	if _, err := time.Parse(time.DateOnly, day); err == nil {
-		return "magpie-requests-day-" + day
+		return product.ID + "-requests-day-" + day
 	}
 	if p.IsRange() { // the days picked, which already say when
 		// a minute an end names ("T09:30") without the colon Windows
 		// doesn't take in a file name
-		return "magpie-requests-" + strings.ReplaceAll(strings.Replace(string(p), "..", "-to-", 1), ":", "")
+		return product.ID + "-requests-" + strings.ReplaceAll(strings.Replace(string(p), "..", "-to-", 1), ":", "")
 	}
 	// a rolling window ("last:24h0m0s") without the colon, which Windows
 	// doesn't take in a file name (#2075)
-	return "magpie-requests-" + strings.ReplaceAll(string(p), ":", "-") + "-" + now.Format(time.DateOnly)
+	return product.ID + "-requests-" + strings.ReplaceAll(string(p), ":", "-") + "-" + now.Format(time.DateOnly)
 }
 
 // contentJSON is what was said in a request, or why it can't be told.

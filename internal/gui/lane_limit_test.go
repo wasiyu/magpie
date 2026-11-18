@@ -20,6 +20,10 @@ func TestLaneLimitRoutes(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	// An absent owner is a local fixture, never the user's live gateway.
+	owner := httptest.NewServer(http.NotFoundHandler())
+	defer owner.Close()
+	t.Setenv("MAGPIE_ADDR", strings.TrimPrefix(owner.URL, "http://"))
 	p := provider.Provider{ID: "lane-test", Name: "Lane", Chat: "https://example.invalid/v1", Key: "primary", Keys: []provider.KeyAccount{{Key: "second"}}}
 	if err := provider.Save(p); err != nil {
 		t.Fatal(err)

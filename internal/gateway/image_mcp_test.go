@@ -178,8 +178,97 @@ func TestImageMCPSaysWhenOff(t *testing.T) {
 			t.Fatalf("%s: %+v", tool, m)
 		}
 	}
+	m := readImageReply(t, imagePost(h, "127.0.0.1:5000", imageToolCall(GenerateImageTool, map[string]any{"prompt": "a magpie", "model": "art/gpt-image-1"})))
+	if !m.Result.IsError || !strings.Contains(m.Result.Content[0].Text, "Image generation is off") {
+		t.Fatalf("explicit model bypassed Off: %+v", m)
+	}
 	if n := len(e.got("/v1/images/generations")); n != 0 {
 		t.Fatalf("drew %d times while off", n)
+	}
+}
+
+func TestImageMCPModelOverridesDefault(t *testing.T) {
+	s, e := easeled(t)
+	t.Cleanup(s.imageStore.running.Wait)
+	p, err := provider.Find("art")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Models = append(p.Models, "gpt-image-2")
+	if err := provider.Save(*p); err != nil {
+		t.Fatal(err)
+	}
+	st := settings.Load()
+	st.ImageGen = "art/gpt-image-1"
+	if err := settings.Save(st); err != nil {
+		t.Fatal(err)
+	}
+	h := lanGuard(s.Handler())
+	for _, model := range []string{"gpt-image-2", "art/gpt-image-2"} {
+		for _, edit := range []bool{false, true} {
+			args := map[string]any{"prompt": "a city", "model": model, "size": "1536x1024"}
+			path := "/v1/images/generations"
+			if edit {
+				path = "/v1/images/edits"
+				args["reference_images"] = []string{"data:image/png;base64," + base64.StdEncoding.EncodeToString(pngBytes)}
+			}
+			m := readImageReply(t, imagePost(h, "127.0.0.1:5000", imageToolCall(GenerateImageTool, args), "User-Agent", "codex/0.1"))
+			if m.Result.IsError || !strings.Contains(m.Result.Content[0].Text, "art/gpt-image-2") {
+				t.Fatalf("model=%s edit=%v: %+v", model, edit, m)
+			}
+			sent := e.got(path)
+			if len(sent) == 0 || !edit && !strings.Contains(sent[len(sent)-1], `"model":"gpt-image-2"`) || edit && !strings.Contains(sent[len(sent)-1], "name=\"model\"\r\n\r\ngpt-image-2\r\n") {
+				t.Fatalf("wrong model sent: %v", sent)
+			}
+		}
+	}
+	m := readImageReply(t, imagePost(h, "127.0.0.1:5000", imageToolCall(GenerateImageTool, map[string]any{"prompt": "a city", "model": "unknown-image-model"}), "User-Agent", "codex/0.1"))
+	if !m.Result.IsError || len(e.got("/v1/images/generations")) != 2 {
+		t.Fatalf("unknown model silently used the default: %+v", m)
+	}
+	if settings.Load().ImageGen != "art/gpt-image-1" {
+		t.Fatal("per-call model changed the saved default")
+	}
+	// The stdio server uses this API, carrying its MCP User-Agent.
+	for _, model := range []string{"gpt-image-2", "art/gpt-image-2"} {
+		r := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"prompt":"a city","model":"`+model+`"}`))
+		r.RemoteAddr = "127.0.0.1:5000"
+		r.Header.Set("User-Agent", "codex/0.1 "+DrawAgent)
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"model":"art/gpt-image-2"`) {
+			t.Fatalf("stdio model=%s: %d %s", model, w.Code, w.Body.String())
+		}
+	}
+	keys, secrets := newCaller(t, "Limited")
+	if _, err := access.Update("models-key", access.Change{Key: keys[0].ID, Models: []string{"art/gpt-image-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	m = readImageReply(t, imagePost(h, "192.0.2.7:4000", imageToolCall(GenerateImageTool, map[string]any{"prompt": "a city", "model": "art/gpt-image-2"}), "Authorization", "Bearer "+secrets[0]))
+	if !m.Result.IsError || len(e.got("/v1/images/generations")) != 4 {
+		t.Fatalf("explicit model bypassed the key's model limit: %+v", m)
+	}
+	st.ImageGen = "off"
+	if err := settings.Save(st); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"prompt":"a city","model":"art/gpt-image-2"}`))
+	r.RemoteAddr = "127.0.0.1:5000"
+	r.Header.Set("User-Agent", "codex/0.1 "+DrawAgent)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "Image generation is off") || len(e.got("/v1/images/generations")) != 4 {
+		t.Fatalf("stdio model bypassed Off: %d %s", w.Code, w.Body.String())
+	}
+	r = httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"prompt":"a city","model":"art/gpt-image-2"}`))
+	r.RemoteAddr = "127.0.0.1:5000"
+	r.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("direct images API behavior changed: %d %s", w.Code, w.Body.String())
 	}
 }
 

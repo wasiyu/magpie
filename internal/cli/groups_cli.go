@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"slices"
 	"strconv"
 	"strings"
@@ -192,7 +193,7 @@ func parseRouting(v string) (string, error) {
 		}
 		names = append(names, r.name)
 	}
-	return "", fmt.Errorf("routing %q is not one magpie has: %s, or <plugin>/<name> for a gateway plugin's", v, strings.Join(names, ", "))
+	return "", fmt.Errorf(product.Text("routing %q is not one magpie has: %s, or <plugin>/<name> for a gateway plugin's"), v, strings.Join(names, ", "))
 }
 
 func parseStays(v string) (string, error) {
@@ -204,7 +205,7 @@ func parseStays(v string) (string, error) {
 		}
 		names = append(names, s.name)
 	}
-	return "", fmt.Errorf("stays %q is not one magpie has: %s", v, strings.Join(names, ", "))
+	return "", fmt.Errorf(product.Text("stays %q is not one magpie has: %s"), v, strings.Join(names, ", "))
 }
 
 // routingName is what the CLI calls routing v: a plugin's, or one it
@@ -322,7 +323,7 @@ func memberResolver(keep []string) func(string) (string, error) {
 					return provider.GroupPrefix + g.ID, nil
 				}
 			}
-			return "", fmt.Errorf("magpie has no group %q (magpie groups lists them)", gid)
+			return "", fmt.Errorf(product.Text("magpie has no group %q (magpie groups lists them)"), gid)
 		}
 		if slices.Contains(ids, id) || slices.Contains(keep, id) {
 			return id, nil
@@ -348,7 +349,7 @@ func memberResolver(keep []string) func(string) (string, error) {
 		if near := closeMatches(id, ids, 6); len(near) > 0 {
 			msg += "; did you mean " + strings.Join(near, ", ") + "?"
 		}
-		return "", fmt.Errorf("%s (magpie models lists them)", msg)
+		return "", fmt.Errorf(product.Text("%s (magpie models lists them)"), msg)
 	}
 	return resolve
 }
@@ -438,7 +439,7 @@ func applyGroupPairs(g *provider.Group, pairs []string, resolve func(string) (st
 	for _, kv := range pairs {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok {
-			return fmt.Errorf("expected key=value, got %q (magpie group help)", kv)
+			return fmt.Errorf(product.Text("expected key=value, got %q (magpie group help)"), kv)
 		}
 		var err error
 		switch strings.ToLower(strings.TrimSpace(k)) {
@@ -633,7 +634,7 @@ func applyGroupPairs(g *provider.Group, pairs []string, resolve func(string) (st
 			g.Pick, err = pickMember(g.Members, v)
 			g.Routing = provider.Manual
 		default:
-			return fmt.Errorf("unknown field %q (fields: name, note, models, models+, models-, routing, pick, stays, context, levels, family, effort, classifier, intent-sure, fast, weight, listed; magpie group help)", k)
+			return fmt.Errorf(product.Text("unknown field %q (fields: name, note, models, models+, models-, routing, pick, stays, context, levels, family, effort, classifier, intent-sure, fast, weight, listed; magpie group help)"), k)
 		}
 		if err != nil {
 			return err
@@ -684,7 +685,7 @@ func findGroup(ref string) (provider.Group, error) {
 		}
 	}
 	if len(ids) == 0 {
-		return provider.Group{}, fmt.Errorf("no group %q; there are none yet (magpie group add <name> models=…)", ref)
+		return provider.Group{}, fmt.Errorf(product.Text("no group %q; there are none yet (magpie group add <name> models=…)"), ref)
 	}
 	return provider.Group{}, fmt.Errorf("no group %q (groups: %s)", ref, strings.Join(ids, ", "))
 }
@@ -719,7 +720,7 @@ func groupCmd(args []string) error {
 		return nil
 	case "add", "new":
 		if len(rest) == 0 || strings.Contains(rest[0], "=") {
-			return fmt.Errorf("magpie group add <name> models=<m1>[,m2…] [routing=…] [stays=…]\n\n%s", groupUsage)
+			return fmt.Errorf(product.Text("magpie group add <name> models=<m1>[,m2…] [routing=…] [stays=…]\n\n%s"), groupUsage)
 		}
 		verb := "added"
 		if slices.ContainsFunc(provider.Groups(), func(o provider.Group) bool {
@@ -735,7 +736,7 @@ func groupCmd(args []string) error {
 		return showGroup(g)
 	case "set", "edit":
 		if len(rest) < 2 {
-			return fmt.Errorf("magpie group set <id> k=v…\n\n%s", groupUsage)
+			return fmt.Errorf(product.Text("magpie group set <id> k=v…\n\n%s"), groupUsage)
 		}
 		g, err := setGroup(rest[0], rest[1:])
 		if err != nil {
@@ -749,7 +750,7 @@ func groupCmd(args []string) error {
 		return showGroup(g)
 	case "rm", "remove", "delete":
 		if len(rest) < 1 {
-			return fmt.Errorf("magpie group rm <id>…")
+			return fmt.Errorf("%s", product.Text("magpie group rm <id>…"))
 		}
 		gs, err := removeGroups(rest)
 		if err != nil {
@@ -765,7 +766,7 @@ func groupCmd(args []string) error {
 		return nil
 	case "pick", "use":
 		if len(rest) != 2 {
-			return fmt.Errorf("magpie group pick <id> <model>")
+			return fmt.Errorf("%s", product.Text("magpie group pick <id> <model>"))
 		}
 		g, err := setGroup(rest[0], []string{"pick=" + rest[1]})
 		if err != nil {
@@ -775,14 +776,14 @@ func groupCmd(args []string) error {
 		return showGroup(g)
 	case "copy", "duplicate", "dup", "clone":
 		if len(rest) < 1 {
-			return fmt.Errorf("magpie group copy <id> [name]")
+			return fmt.Errorf("%s", product.Text("magpie group copy <id> [name]"))
 		}
 		src, err := findGroup(rest[0])
 		if err != nil {
 			return err
 		}
 		if src.Hidden {
-			return fmt.Errorf("%s was removed: magpie group restore %s brings it back first", src.ID, src.ID)
+			return fmt.Errorf(product.Text("%s was removed: magpie group restore %s brings it back first"), src.ID, src.ID)
 		}
 		g, err := provider.CopyGroup(src.ID, strings.Join(rest[1:], " "))
 		if err != nil {
@@ -796,7 +797,7 @@ func groupCmd(args []string) error {
 		return ruleCmd(rest)
 	case "show":
 		if len(rest) != 1 {
-			return fmt.Errorf("magpie group show <id>")
+			return fmt.Errorf("%s", product.Text("magpie group show <id>"))
 		}
 		g, err := findGroup(rest[0])
 		if err != nil {
@@ -807,7 +808,7 @@ func groupCmd(args []string) error {
 		return autoGroupsCmd(rest)
 	case "restore", "unhide":
 		if len(rest) != 1 {
-			return fmt.Errorf("magpie group restore <id>")
+			return fmt.Errorf("%s", product.Text("magpie group restore <id>"))
 		}
 		g, err := restoreGroup(rest[0])
 		if err != nil {
@@ -821,7 +822,7 @@ func groupCmd(args []string) error {
 		return showGroup(g)
 	}
 	if len(rest) > 0 {
-		return fmt.Errorf("magpie group has no %q\n\n%s", verb, groupUsage)
+		return fmt.Errorf(product.Text("magpie group has no %q\n\n%s"), verb, groupUsage)
 	}
 	g, err := findGroup(verb)
 	if err != nil {
@@ -837,7 +838,7 @@ func addGroup(name string, pairs []string) (provider.Group, error) {
 	}
 	if g.ID = strings.ToLower(strings.TrimSpace(g.ID)); g.ID != "" {
 		if old, err := findGroup(g.ID); err == nil && old.ID == g.ID {
-			return g, fmt.Errorf("there is a group %s already: magpie group set %s k=v… changes it", g.ID, g.ID)
+			return g, fmt.Errorf(product.Text("there is a group %s already: magpie group set %s k=v… changes it"), g.ID, g.ID)
 		}
 	} else {
 		// a group is known by its name: adding one under a name taken
@@ -854,7 +855,7 @@ func addGroup(name string, pairs []string) (provider.Group, error) {
 		g.Name = g.ID
 	}
 	if len(g.Members) == 0 && len(g.Match) == 0 {
-		return g, fmt.Errorf("a group needs a model in it: models=<provider/model>[,…] (magpie models lists them), or a pattern: models='openrouter/*:free'")
+		return g, fmt.Errorf("%s", product.Text("a group needs a model in it: models=<provider/model>[,…] (magpie models lists them), or a pattern: models='openrouter/*:free'"))
 	}
 	if err := provider.SaveGroup(g); err != nil {
 		return g, err
@@ -868,14 +869,14 @@ func setGroup(ref string, pairs []string) (provider.Group, error) {
 		return g, err
 	}
 	if g.Hidden {
-		return g, fmt.Errorf("%s was removed: magpie group restore %s brings it back first", g.ID, g.ID)
+		return g, fmt.Errorf(product.Text("%s was removed: magpie group restore %s brings it back first"), g.ID, g.ID)
 	}
 	from := g.ID
 	if err := applyGroupPairs(&g, pairs, memberResolver(g.Members), true); err != nil {
 		return g, err
 	}
 	if len(g.Members) == 0 && len(g.Match) == 0 {
-		return g, fmt.Errorf("a group needs a model in it; magpie group rm %s removes it", from)
+		return g, fmt.Errorf(product.Text("a group needs a model in it; magpie group rm %s removes it"), from)
 	}
 	pruneRules(&g)
 	to := strings.ToLower(strings.TrimSpace(g.ID))
@@ -924,7 +925,7 @@ func removeGroups(refs []string) ([]provider.Group, error) {
 			return nil, err
 		}
 		if g.Hidden {
-			return nil, fmt.Errorf("%s is removed already; magpie group restore %s brings it back", g.ID, g.ID)
+			return nil, fmt.Errorf(product.Text("%s is removed already; magpie group restore %s brings it back"), g.ID, g.ID)
 		}
 		gs, ids = append(gs, g), append(ids, g.ID)
 	}
@@ -935,12 +936,12 @@ func removeGroup(ref string) (provider.Group, error) {
 	g, err := findGroup(ref)
 	if err != nil {
 		if id, ok := removedOnly(ref); ok {
-			return g, fmt.Errorf("%s is removed already (and no two providers serve its model now); magpie group restore %s brings it back", id, id)
+			return g, fmt.Errorf(product.Text("%s is removed already (and no two providers serve its model now); magpie group restore %s brings it back"), id, id)
 		}
 		return g, err
 	}
 	if g.Hidden {
-		return g, fmt.Errorf("%s is removed already; magpie group restore %s brings it back", g.ID, g.ID)
+		return g, fmt.Errorf(product.Text("%s is removed already; magpie group restore %s brings it back"), g.ID, g.ID)
 	}
 	return g, provider.DeleteGroup(g.ID)
 }
@@ -1064,10 +1065,10 @@ func autoGroupsCmd(args []string) error {
 	case "skip":
 		return autoGroupSkipCmd(args[1:])
 	default:
-		return fmt.Errorf("magpie group auto [on|off|skip <provider>…|skip none]")
+		return fmt.Errorf("%s", product.Text("magpie group auto [on|off|skip <provider>…|skip none]"))
 	}
 	if len(args) > 1 {
-		return fmt.Errorf("magpie group auto [on|off]")
+		return fmt.Errorf("%s", product.Text("magpie group auto [on|off]"))
 	}
 	moved, err := agent.Reseat(func() error { return provider.SetAutoGroups(on) })
 	if err != nil {

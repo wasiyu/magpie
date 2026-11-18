@@ -35,6 +35,7 @@ import (
 	"github.com/yetone/magpie/internal/lazyre"
 	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/proc"
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/rosetta"
 	"github.com/yetone/magpie/internal/settings"
 	"github.com/yetone/magpie/internal/source"
@@ -44,9 +45,19 @@ import (
 // Site is magpie's home; its /api/latest is the update feed.
 const Site = "https://usemagpie.ai"
 
+// JellytoolFeed is set by the Jellytool packager. An unconfigured development
+// build never falls back to magpie's feed.
+var JellytoolFeed string
+
 // Feed is where the newest release is described. MAGPIE_UPDATE_FEED points
 // it elsewhere, for testing an update against a local server.
 func Feed() string {
+	if product.Jellytool {
+		if f := os.Getenv("JELLYTOOL_UPDATE_FEED"); f != "" {
+			return f
+		}
+		return JellytoolFeed
+	}
 	if f := os.Getenv("MAGPIE_UPDATE_FEED"); f != "" {
 		return f
 	}
@@ -55,10 +66,11 @@ func Feed() string {
 
 // Release is one published version.
 type Release struct {
-	Version string           `json:"version"` // "0.2.0", no v
-	Notes   string           `json:"notes"`   // markdown
-	URL     string           `json:"url"`     // the release page
-	Assets  map[string]Asset `json:"assets"`  // by file name
+	Product string           `json:"product,omitempty"` // Jellytool feeds must say "jellytool"
+	Version string           `json:"version"`           // "0.2.0", no v
+	Notes   string           `json:"notes"`             // markdown
+	URL     string           `json:"url"`               // the release page
+	Assets  map[string]Asset `json:"assets"`            // by file name
 	// Signed is what vouches for Assets' hashes (signed.go).
 	Signed *Signed `json:"signed,omitempty"`
 }
@@ -186,6 +198,9 @@ func latestAt(ctx context.Context, feed, lang string) (*Release, error) {
 }
 
 func latestFrom(ctx context.Context, feed, lang string) (*Release, error) {
+	if Feed() == "" {
+		return nil, errors.New("update feed is not configured")
+	}
 	req, err := http.NewRequestWithContext(ctx, "GET", feed, nil)
 	if err != nil {
 		return nil, err
@@ -207,6 +222,12 @@ func latestFrom(ctx context.Context, feed, lang string) (*Release, error) {
 	}
 	if err := r.verify(); err != nil {
 		return nil, fmt.Errorf("update feed: %w", err)
+	}
+	if product.Jellytool {
+		page, err := url.Parse(r.URL)
+		if r.Product != product.ID || err != nil || page.Scheme != "https" || page.Hostname() == "" || page.User != nil {
+			return nil, errors.New("update feed must describe Jellytool and an HTTPS download page")
+		}
 	}
 	r.Notes = InLang(r.Notes, lang)
 	r.githubAddresses()

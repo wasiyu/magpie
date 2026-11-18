@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"errors"
+	"github.com/yetone/magpie/internal/product"
 	"io"
 	"maps"
 	"math"
@@ -548,7 +549,7 @@ func sessionMarkdown(agentID, id string) (stem string, md []byte, err error) {
 		}
 		return '-'
 	}, s.Agent+"-"+string(short))
-	return "magpie-session-" + safe, b.Bytes(), nil
+	return product.ID + "-session-" + safe, b.Bytes(), nil
 }
 
 // wslName is an agent's name for a session it ran in a WSL distro, as the

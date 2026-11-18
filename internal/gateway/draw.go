@@ -412,8 +412,14 @@ func DrawersOf(p provider.Provider, avail func() []catalog.Model) []catalog.Mode
 			}
 			// or one the plugin says gives images alone, whatever its name
 			// (maonekone on Discord)
-			if (catalog.DrawsID(m.ID) && catalog.ImagesAPI(m.ID) || imagesOnly(m.OutputModalities)) && p.PluginOpenAICompatible(m.ID) ||
-				pluginDrawsGemini(p, m.ID) && (catalog.DrawsID(m.ID) || slices.Contains(m.OutputModalities, "image")) {
+			draws := (catalog.DrawsID(m.ID) && catalog.ImagesAPI(m.ID) || imagesOnly(m.OutputModalities)) && p.PluginOpenAICompatible(m.ID) ||
+				pluginDrawsGemini(p, m.ID) && (catalog.DrawsID(m.ID) || slices.Contains(m.OutputModalities, "image"))
+			// Jellytoken's catalog explicitly classifies every entry, including
+			// new image model names the shared catalog has never seen.
+			if p.PluginProvider() == "jellytoken" {
+				draws = slices.Contains(m.OutputModalities, "image") && p.PluginOpenAICompatible(m.ID)
+			}
+			if draws {
 				m.Provider = p.ID
 				out = append(out, m)
 			}
@@ -688,6 +694,12 @@ type drawn struct {
 
 func (s *Server) images(edit bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Keep the stdio MCP tool off too when a call names its own model.
+		// Direct images API callers retain their explicit-model behavior.
+		if settings.Load().ImageGen == "off" && strings.Contains(r.UserAgent(), DrawAgent) {
+			writeError(w, provider.Chat, 400, "Image generation is off in magpie: pick a model for it in Settings → Images → Image generation")
+			return
+		}
 		inputBody, admitted := s.requestBody(w, r, provider.Chat)
 		if !admitted {
 			return
@@ -1183,6 +1195,9 @@ func isOpenRouter(p provider.Provider) bool {
 
 // viaFor is where model is best asked to draw at p.
 func viaFor(p provider.Provider, model string) drawVia {
+	if p.PluginProvider() == "jellytoken" && p.PluginOpenAICompatible(model) {
+		return viaImages
+	}
 	switch {
 	case p.IsRemoteMagpie():
 		// another magpie's images API asks the model's vendor the way
@@ -1703,6 +1718,23 @@ func (s *Server) drawImages(ctx context.Context, p provider.Provider, model stri
 		}
 		body, _ = json.Marshal(req)
 		ct, url = "application/json", base+"/images/generations"
+	} else if p.PluginProvider() == "jellytoken" {
+		// Jellytoken's task API takes reference URLs; keep public/asset URLs
+		// intact so the task service can fetch them. Local data URLs are
+		// rejected by the plugin with an actionable message.
+		req := map[string]any{"model": model, "prompt": d.Prompt, "n": d.N}
+		for k, v := range map[string]string{"size": d.Size, "quality": d.Quality, "background": d.Background, "output_format": d.Format} {
+			if v != "" {
+				req[k] = v
+			}
+		}
+		var imgs []map[string]string
+		for _, pic := range d.Images {
+			imgs = append(imgs, map[string]string{"image_url": pic.dataURL()})
+		}
+		req["reference_images"] = imgs
+		body, _ = json.Marshal(req)
+		ct, url = "application/json", base+"/images/edits"
 	} else if drawsCodex(p) || senseNovaDrawer(m) {
 		// ChatGPT's backend takes an edit only as JSON, each image a data URL;
 		// so does SenseNova's for its U1 models, which answer in a URL unless

@@ -2805,18 +2805,61 @@ Covered by `TestVisionMCPAnalyzesImage`, `TestVisionMCPWithNoSeer`,
 
 ## Image generation as an MCP server
 
+Jellytoken's bundled plugin uses its catalog's explicit IMAGE/VIDEO output
+types for image and video discovery, including model names unknown to the
+shared catalog. Its media models use the OpenAI-compatible images/videos API
+through the plugin's authenticated fetch. Other plugins retain their existing
+discovery behavior. `TestJellytoolMediaThroughGateway` covers these paths with
+the real private Bun host and a local vendor fixture.
+
 `ImageMCPPath`, `/mcp/magpie/image` ([`image_mcp.go`](../../internal/gateway/image_mcp.go)),
 serves Settings › Models › Images › Image generation as a Streamable HTTP MCP server
 with the tools the stdio Magpie Image server has (`internal/imagemcp`):
 `generate_image`, `generate_video` and `generation_result` (JonahFu on X:
 magpie in Docker in gateway mode has no Library, so no stdio server). Their
 schemas are the gateway's `ImageToolProps`, `VideoToolProps` and
-`ResultToolProps`, which the stdio server takes too, adding only its `path`
-argument. It is served by `serveMCP`, so it is guarded as the vision server
-is: `local` or a shared magpie's caller, a refused Origin 403, POST only, a
+`ResultToolProps`, which the stdio server takes too, adding its `path`
+argument and describing its local saving rules. It is served by `serveMCP`,
+so it is guarded as the vision server is: `local` or a shared magpie's caller,
+a refused Origin 403, POST only, a
 32 MB body, and each call reserves the calling key's limit. An input image
 goes through `mcpImageSrc`, the vision server's reader: a URL or data URL as
 it is, a file path only for a `local` caller.
+
+`generate_image` accepts an optional `model`, forwarded by both the stdio and
+HTTP tools to the images API for generations and edits. It accepts a bare model
+name (such as `gpt-image-2`) or `provider/model`; the latter selects a provider
+explicitly. Omitting it keeps the Settings default. A call never saves or changes
+that default. Explicit MCP model names use normal image-model resolution even
+from Codex, rather than its native image tool's conversation-provider selection.
+An unknown model is an error, not a reason to use the default. Off in Settings
+continues to disable both MCP transports, including calls naming a model;
+direct images API calls retain their existing explicit-model behavior. See
+`TestGenerateForwardsExplicitModel` and `TestImageMCPModelOverridesDefault`.
+
+The local stdio server (`jellytool-image` in Jellytool, `magpie-image` in
+Magpie) enforces an explicit `WIDTHxHEIGHT` at its final save boundary for
+both generation and editing ([`resize.go`](../../internal/imagemcp/resize.go),
+`pixelSize` and `resizeImage`). The upstream request's `size` is unchanged.
+After base64 decoding or URL downloading, a PNG/JPEG with different dimensions
+is resampled with Catmull-Rom interpolation, scaled uniformly to cover the
+target and cropped at the center. PNG alpha and the PNG/JPEG format are kept;
+the saved extension follows the actual bytes. Equal dimensions keep their
+original bytes, as do omitted sizes, `auto` and aspect ratios such as `16:9`.
+Each explicit-size result names the original dimensions and whether local
+interpolation changed them; it does not claim native model resolution.
+Numeric targets exceeding 16384 pixels per side or 33554432 pixels in total
+are refused before drawing. Source dimensions have the same bounds; resizing
+also has a conservative 512 MiB working-memory estimate checked before pixel
+decoding. If resizing cannot be done (including unsupported GIF/WebP encoding,
+corrupt bytes or resource limits), the original is saved and the result
+explicitly says the requested size was not reached. The HTTP MCP server and
+direct `/v1/images/*` responses retain the upstream dimensions. Covered by
+`TestGenerateSavesExactSize`, `TestGenerateKeepsOriginalSizeBytes`,
+`TestResizeReportedDimensions`, `TestGenerateRejectsUnsafeSizeBeforeDrawing`,
+`TestResizeBoundsDecodedMemory` and `TestGenerateKeepsOriginalWhenResizingFails`:
+`go test -tags nogui ./internal/imagemcp` (isolated HOME as described in
+[verification](provider-plugins.md#verification)).
 
 A drawing runs `images` in-process on a clone of the request
 (`inProcess`, the caller and key kept), so it is routed, counted and held to
@@ -3598,3 +3641,18 @@ go test -tags nogui ./internal/provider -run 'TestGroup|TestCodexCreditsSwitch|T
 
 The gateway's `TestMain` gives the package a home of its own, so these tests
 never read real providers or accounts.
+
+## Jellytool build
+
+The independent application uses
+[`ServeJellytool` and `JellytoolFront`](../../internal/gateway/jellytool.go),
+not ListenAndServe. It owns a fixed loopback listener at 127.0.0.1:3435 and
+never probes or takes another process's gateway. Only GET /v1/models and
+POST /v1/chat/completions, /v1/responses and /v1/messages reach the original
+request stack, including its Host/Origin guards. Management, profiling, MCP,
+subscription backend and alternate paths are rejected outside that stack.
+No WhileServing task, account refresh, updater, warmup, check-in or WSL
+listener is started. Providers are restricted to the bundled Jellytoken
+plugin and routing groups are absent. Ordinary builds retain the behavior
+above. See [Jellytool P1](../plans/jellytool-plugin-p1.md) for evidence and
+compatibility limits.

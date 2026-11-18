@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"slices"
 	"strconv"
 	"strings"
@@ -144,7 +145,7 @@ func ruleCmd(args []string) error {
 		return err
 	}
 	if g.Hidden {
-		return fmt.Errorf("%s was removed: magpie group restore %s brings it back first", g.ID, g.ID)
+		return fmt.Errorf(product.Text("%s was removed: magpie group restore %s brings it back first"), g.ID, g.ID)
 	}
 	place := func(s string) (int, error) {
 		n, err := strconv.Atoi(s)
@@ -172,7 +173,7 @@ func ruleCmd(args []string) error {
 		}
 	case "rm", "remove", "delete":
 		if len(rest) != 2 {
-			return fmt.Errorf("magpie group rule rm <group> <n>")
+			return fmt.Errorf("%s", product.Text("magpie group rule rm <group> <n>"))
 		}
 		i, err := place(rest[1])
 		if err != nil {
@@ -181,7 +182,7 @@ func ruleCmd(args []string) error {
 		g.Rules = slices.Delete(g.Rules, i, i+1)
 	case "mv", "move":
 		if len(rest) != 3 {
-			return fmt.Errorf("magpie group rule mv <group> <n> <to>")
+			return fmt.Errorf("%s", product.Text("magpie group rule mv <group> <n> <to>"))
 		}
 		i, err := place(rest[1])
 		if err != nil {
@@ -195,14 +196,14 @@ func ruleCmd(args []string) error {
 		g.Rules = slices.Insert(slices.Delete(g.Rules, i, i+1), j, r)
 	case "classifier", "classify":
 		if len(rest) != 2 {
-			return fmt.Errorf("magpie group rule classifier <group> <model>")
+			return fmt.Errorf("%s", product.Text("magpie group rule classifier <group> <model>"))
 		}
 		if !slices.ContainsFunc(g.Rules, func(r provider.Rule) bool { return r.Intent != "" }) {
 			return fmt.Errorf("%s has no rule with an intent to classify for", g.ID)
 		}
 		g.Classifier = rest[1]
 	default:
-		return fmt.Errorf("magpie group rule has no %q\n\n%s", verb, ruleUsage)
+		return fmt.Errorf(product.Text("magpie group rule has no %q\n\n%s"), verb, ruleUsage)
 	}
 	if err := provider.SaveGroup(g); err != nil {
 		return err

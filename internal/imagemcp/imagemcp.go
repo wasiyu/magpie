@@ -101,9 +101,10 @@ var resultSchema = map[string]any{
 
 var schema = map[string]any{
 	"name": tool,
-	"description": "Generate an image from a text prompt, or edit/combine images given as reference_images, with the image model set in Magpie. " +
-		"The image is saved as a file in the project (" + Folder + "/ unless path says where) and its path is returned (when it is not ready within about 20 seconds, the answer is an id to wait on with " + resultTool + " instead); " +
-		"reference it from code or docs by that path. Write a detailed prompt: subject, style, composition, colours, any text to render exactly.",
+	"description": "Generate an image from a text prompt, or edit/combine images given as reference_images, with the model argument or the image model set in Magpie. " +
+		"The image is saved as a file in the project (" + Folder + "/ unless path says where) and its path is returned (when it is not ready within about 20 seconds, the answer is an id to wait on with " + resultTool + " instead); reference it from code or docs by that path. " +
+		"An explicit WIDTHxHEIGHT locally resizes PNG/JPEG files with interpolation and an aspect-preserving center crop when needed (up to 16384 per side and 33554432 pixels). Ratios and auto keep the original. If processing fails, the original is saved and the result explains why the requested size was not reached. " +
+		"Write a detailed prompt: subject, style, composition, colours, any text to render exactly.",
 	"inputSchema": map[string]any{
 		"type": "object",
 		"properties": withPath(gateway.ImageToolProps("file paths or http(s) URLs"),
@@ -457,6 +458,10 @@ func (s *server) generate(raw json.RawMessage, used *string, c caller) (string, 
 	if strings.TrimSpace(a.Prompt) == "" {
 		return "", errors.New("prompt is required")
 	}
+	size, err := pixelSize(a.Size)
+	if err != nil {
+		return "", err
+	}
 	a.N = max(1, min(a.N, 4))
 	project := s.project(c)
 	// the images themselves, not URLs to fetch: the gateway fetches one a
@@ -532,7 +537,7 @@ func (s *server) generate(raw json.RawMessage, used *string, c caller) (string, 
 	// an image that was drawn, and paid for, is never dropped unsaid: one
 	// that can't be had is answered by where the vendor keeps it, beside
 	// those saved (#1576)
-	var saved, revised, lost []string
+	var saved, details, revised, lost []string
 	for i, d := range out.Data {
 		img, mt := []byte(nil), d.Mime
 		switch {
@@ -550,6 +555,12 @@ func (s *server) generate(raw json.RawMessage, used *string, c caller) (string, 
 		default:
 			continue
 		}
+		resized, detail, resizeErr := resizeImage(img, size)
+		if resizeErr != nil {
+			detail = fmt.Sprintf("local resizing to %s failed (%v); saved original without resizing", a.Size, resizeErr)
+		} else {
+			img = resized
+		}
 		// what the bytes are, over what the vendor says: a model asked for
 		// a PNG may well send a JPEG
 		if sniffed := http.DetectContentType(img); strings.HasPrefix(sniffed, "image/") {
@@ -566,6 +577,7 @@ func (s *server) generate(raw json.RawMessage, used *string, c caller) (string, 
 			return "", err
 		}
 		saved = append(saved, path)
+		details = append(details, detail)
 		if d.Revised != "" {
 			revised = append(revised, d.Revised)
 		}
@@ -575,8 +587,12 @@ func (s *server) generate(raw json.RawMessage, used *string, c caller) (string, 
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "Generated with %s, saved to:\n", out.Model)
-	for _, p := range saved {
-		fmt.Fprintf(&b, "- %s\n", shownPath(p))
+	for i, p := range saved {
+		fmt.Fprintf(&b, "- %s", shownPath(p))
+		if details[i] != "" {
+			fmt.Fprintf(&b, " (%s)", details[i])
+		}
+		b.WriteByte('\n')
 	}
 	for _, l := range lost {
 		fmt.Fprintf(&b, "Not saved: %s\n", l)

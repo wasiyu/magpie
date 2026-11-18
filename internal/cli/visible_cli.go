@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"maps"
 	"slices"
 	"strings"
@@ -114,7 +115,7 @@ func visibleCmd(args []string) error {
 		for i, n := range list {
 			n = strings.TrimPrefix(provider.CanonicalRef(n), provider.GroupPrefix)
 			if !slices.ContainsFunc(known, func(k string) bool { return strings.EqualFold(k, n) }) {
-				return fmt.Errorf("%s is no family, provider or group (families: %s; magpie provider set <id> family=%s makes one)",
+				return fmt.Errorf(product.Text("%s is no family, provider or group (families: %s; magpie provider set <id> family=%s makes one)"),
 					n, orNone(provider.Families()), n)
 			}
 			list[i] = n

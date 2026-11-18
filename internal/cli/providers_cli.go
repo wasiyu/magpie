@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"log"
 	"maps"
 	"math"
@@ -514,7 +515,7 @@ func providerCmd(args []string) error {
 	case "set":
 		// the same k=v pairs as add, on a provider already here
 		if len(rest) < 2 {
-			return fmt.Errorf("magpie provider set <id> k=v…\n\n%s", providerUsage)
+			return fmt.Errorf(product.Text("magpie provider set <id> k=v…\n\n%s"), providerUsage)
 		}
 		p, err := provider.Find(rest[0])
 		if err != nil {
@@ -550,7 +551,7 @@ func providerCmd(args []string) error {
 		return nil
 	case "key":
 		if len(rest) != 2 {
-			return fmt.Errorf("magpie provider key <id> <key>")
+			return fmt.Errorf("%s", product.Text("magpie provider key <id> <key>"))
 		}
 		p, err := provider.Find(rest[0])
 		if err != nil {
@@ -564,7 +565,7 @@ func providerCmd(args []string) error {
 		return nil
 	case "icon":
 		if len(rest) != 2 {
-			return fmt.Errorf("magpie provider icon <id> <picture file | built-in name | \"\">")
+			return fmt.Errorf("%s", product.Text("magpie provider icon <id> <picture file | built-in name | \"\">"))
 		}
 		p, err := provider.Find(rest[0])
 		if err != nil {
@@ -589,7 +590,7 @@ func providerCmd(args []string) error {
 		// where requests go when this provider is out of quota, rate
 		// limited or down; "none" clears the list
 		if len(rest) < 1 {
-			return fmt.Errorf("magpie provider fallback <id> [provider/model… | group/<id>… | none]")
+			return fmt.Errorf("%s", product.Text("magpie provider fallback <id> [provider/model… | group/<id>… | none]"))
 		}
 		p, err := provider.Find(rest[0])
 		if err != nil {
@@ -602,7 +603,7 @@ func providerCmd(args []string) error {
 					// a routing group's id ("group/<id>") resolves too: the
 					// gateway sends the request through the group
 					if _, _, ok := provider.Resolve(id); !ok {
-						return fmt.Errorf("magpie knows no model or group %q (magpie models lists them)", id)
+						return fmt.Errorf(product.Text("magpie knows no model or group %q (magpie models lists them)"), id)
 					}
 					p.Fallback = append(p.Fallback, id)
 				}
@@ -623,7 +624,7 @@ func providerCmd(args []string) error {
 		return nil
 	case "rm", "remove", "delete":
 		if len(rest) != 1 {
-			return fmt.Errorf("magpie provider rm <id>")
+			return fmt.Errorf("%s", product.Text("magpie provider rm <id>"))
 		}
 		p, err := provider.Find(rest[0])
 		if err != nil {
@@ -650,7 +651,7 @@ func providerCmd(args []string) error {
 			}
 		}
 		if len(rest) < 1 {
-			return fmt.Errorf("magpie provider test <id> [--as codex|claude-code] [model…]")
+			return fmt.Errorf("%s", product.Text("magpie provider test <id> [--as codex|claude-code] [model…]"))
 		}
 		p, err := provider.Find(rest[0])
 		if err != nil {
@@ -718,7 +719,7 @@ func providerCmd(args []string) error {
 		// no: the provider's models leave the list agents see and serve
 		// only through the routing groups they are in
 		if len(rest) != 2 || (rest[1] != "yes" && rest[1] != "no") {
-			return fmt.Errorf("magpie provider listed <id> yes|no")
+			return fmt.Errorf("%s", product.Text("magpie provider listed <id> yes|no"))
 		}
 		p, err := provider.Find(rest[0])
 		if err != nil {
@@ -757,7 +758,7 @@ func providerCmd(args []string) error {
 		// off: kept with its keys, but agents are given none of its
 		// models and no request goes to it
 		if len(rest) != 1 {
-			return fmt.Errorf("magpie provider %s <id>", verb)
+			return fmt.Errorf(product.Text("magpie provider %s <id>"), verb)
 		}
 		p, err := provider.Find(rest[0])
 		if err != nil {
@@ -776,14 +777,14 @@ func providerCmd(args []string) error {
 		return nil
 	case "models", "refresh", "fetch":
 		if len(rest) < 1 {
-			return fmt.Errorf("magpie provider %s <id> [model ids to expose…]", verb)
+			return fmt.Errorf(product.Text("magpie provider %s <id> [model ids to expose…]"), verb)
 		}
 		p, err := provider.Find(rest[0])
 		if err != nil {
 			return err
 		}
 		if len(rest) > 1 && verb != "models" {
-			return fmt.Errorf("magpie provider %s <id> fetches its list · magpie provider models <id> <ids…> picks from it", verb)
+			return fmt.Errorf(product.Text("magpie provider %s <id> fetches its list · magpie provider models <id> <ids…> picks from it"), verb)
 		}
 		if len(rest) > 1 {
 			before := *p
@@ -836,7 +837,7 @@ func providerCmd(args []string) error {
 // addProvider: `magpie provider add <preset> [key]` or `magpie provider add <name> k=v…`
 func addProvider(rest []string) error {
 	if len(rest) == 0 {
-		return fmt.Errorf("magpie provider add <preset> <key>   or   magpie provider add <name> k=v…\n\n%s", providerUsage)
+		return fmt.Errorf(product.Text("magpie provider add <preset> <key>   or   magpie provider add <name> k=v…\n\n%s"), providerUsage)
 	}
 	if len(rest) == 1 && slices.ContainsFunc(provider.Excluded(), func(x provider.Exclusion) bool { return x.Provider == strings.ToLower(rest[0]) }) {
 		// a signed-in account the user removed comes back with its picks
@@ -866,7 +867,7 @@ func addProvider(rest []string) error {
 	id, err := provider.Add(p)
 	if err != nil && p.IsVertex() && (p.Vertex == nil || strings.TrimSpace(p.Vertex.Project) == "") {
 		// the pair that gives the project, which Save's words don't name
-		return fmt.Errorf("%w · magpie provider add %s project=<your Google Cloud project's id>, or give an API key", err, p.Preset)
+		return fmt.Errorf(product.Text("%w · magpie provider add %s project=<your Google Cloud project's id>, or give an API key"), err, p.Preset)
 	}
 	if err != nil {
 		return err
@@ -1386,7 +1387,7 @@ func applyPairs(p *provider.Provider, pairs []string) error {
 				on = true
 			case "magpie", "default", "no", "off":
 			default:
-				return fmt.Errorf("user-agent=agent|magpie, not %q", v)
+				return fmt.Errorf(product.Text("user-agent=agent|magpie, not %q"), v)
 			}
 			if on && p.Account != nil {
 				return fmt.Errorf("%s signs in as its own client, which sends the User-Agent it does; user-agent= is for a provider with an API key", p.Name)
@@ -1412,7 +1413,7 @@ func applyPairs(p *provider.Provider, pairs []string) error {
 			case "magpie", "default", "no", "off":
 				p.NativeCompaction = false
 			default:
-				return fmt.Errorf("compaction=native|magpie, not %q", v)
+				return fmt.Errorf(product.Text("compaction=native|magpie, not %q"), v)
 			}
 		case "unmasked":
 			// yes: the provider gets the requests as written, unmasked by
@@ -1819,7 +1820,7 @@ func importCmd(args []string) error {
 		}
 	}
 	if link == "" {
-		return errors.New("magpie import [-y] 'magpie://import?…'")
+		return errors.New(product.Text("magpie import [-y] 'magpie://import?…'"))
 	}
 	p, err := provider.ParseImport(link)
 	if err != nil {
@@ -1863,7 +1864,7 @@ func fetchedFrom(p provider.Provider) string {
 // (#474), each account's with none named, all for every one the provider has.
 func accountModelsCmd(rest []string) error {
 	if len(rest) < 1 {
-		return fmt.Errorf("magpie provider account-models <id> [account|key [model ids…|all]]")
+		return fmt.Errorf("%s", product.Text("magpie provider account-models <id> [account|key [model ids…|all]]"))
 	}
 	p, err := provider.Find(rest[0])
 	if err != nil {
@@ -1919,7 +1920,7 @@ func accountModelsCmd(rest []string) error {
 // alone (provider.AccountWindowCaps); with --amount too, a fixed amount of
 // that window's own unit, credits or requests (provider.AccountWindowAmounts).
 func accountCapCmd(rest []string) error {
-	usage := fmt.Errorf("magpie provider account-cap <id> [account [percent|off]]\n       magpie provider account-cap <id> <account> --window <name> [percent|none|default]\n       magpie provider account-cap <id> <account> --window <name> --amount <n|off>")
+	usage := fmt.Errorf("%s", product.Text("magpie provider account-cap <id> [account [percent|off]]\n       magpie provider account-cap <id> <account> --window <name> [percent|none|default]\n       magpie provider account-cap <id> <account> --window <name> --amount <n|off>"))
 	window, windowSet := "", false
 	amount, amountSet := "", false
 	for i := 0; i < len(rest); i++ {
@@ -2064,7 +2065,7 @@ func parseWindowCap(s string) (int, error) {
 // /v1/magpie/concurrency and on the app's account rows.
 func accountConcurrencyCmd(rest []string) error {
 	if len(rest) < 1 {
-		return fmt.Errorf("magpie provider account-concurrency <id> [account|key [n|off|default]]")
+		return fmt.Errorf("%s", product.Text("magpie provider account-concurrency <id> [account|key [n|off|default]]"))
 	}
 	p, err := provider.Find(rest[0])
 	if err != nil {
@@ -2179,7 +2180,7 @@ func accountWeightCmd(rest []string) error {
 // (#892).
 func queueCmd(rest []string) error {
 	if len(rest) < 1 || len(rest) > 3 {
-		return fmt.Errorf("magpie provider queue <id> [length [seconds]]")
+		return fmt.Errorf("%s", product.Text("magpie provider queue <id> [length [seconds]]"))
 	}
 	p, err := provider.Find(rest[0])
 	if err != nil {
@@ -2229,7 +2230,7 @@ func queueCmd(rest []string) error {
 // free models take 20).
 func rpmCmd(rest []string) error {
 	if len(rest) < 1 || len(rest) > 2 {
-		return fmt.Errorf("magpie provider rpm <id> [n|off]")
+		return fmt.Errorf("%s", product.Text("magpie provider rpm <id> [n|off]"))
 	}
 	p, err := provider.Find(rest[0])
 	if err != nil {
@@ -2304,7 +2305,7 @@ func atOnceCmd(rest []string) error {
 // vendor says one is out of its allowance without saying when it is back
 // (#1772: Ollama Cloud's weekly limit, asked again every 15 minutes).
 func quotaRestCmd(rest []string) error {
-	usage := fmt.Errorf("magpie provider quota-rest <id> [30m|6h|7d|until 08:00|until 00:00+08:00|default]")
+	usage := fmt.Errorf("%s", product.Text("magpie provider quota-rest <id> [30m|6h|7d|until 08:00|until 00:00+08:00|default]"))
 	if len(rest) == 3 && (rest[1] == "until" || rest[1] == "at") {
 		rest = []string{rest[0], rest[2]}
 	}
@@ -2348,7 +2349,7 @@ func quotaRestCmd(rest []string) error {
 // while they keep failing or being rate limited (#2008).
 func restCapCmd(rest []string) error {
 	if len(rest) < 1 || len(rest) > 2 {
-		return fmt.Errorf("magpie provider rest-cap <id> [1m|30m|6h|1d|off|default]")
+		return fmt.Errorf("%s", product.Text("magpie provider rest-cap <id> [1m|30m|6h|1d|off|default]"))
 	}
 	p, err := provider.Find(rest[0])
 	if err != nil {
@@ -2455,7 +2456,7 @@ func editPicks(p provider.Provider, args []string) ([]string, error) {
 		return slices.Clone(args), nil
 	}
 	if edits != len(args) {
-		return nil, fmt.Errorf("give either the whole list (magpie provider models %s a b c) or only changes (+a -b), not both", p.ID)
+		return nil, fmt.Errorf(product.Text("give either the whole list (magpie provider models %s a b c) or only changes (+a -b), not both"), p.ID)
 	}
 	picks := slices.Clone(p.Models)
 	if len(picks) == 0 {
@@ -2480,7 +2481,7 @@ func editPicks(p provider.Provider, args []string) ([]string, error) {
 	}
 	if len(picks) == 0 {
 		// no picks means the default list, not none
-		return nil, fmt.Errorf("that leaves no model exposed · to serve none of %s's models: magpie provider models %s none; to keep them for routing groups alone: magpie provider listed %s no", p.Name, p.ID, p.ID)
+		return nil, fmt.Errorf(product.Text("that leaves no model exposed · to serve none of %s's models: magpie provider models %s none; to keep them for routing groups alone: magpie provider listed %s no"), p.Name, p.ID, p.ID)
 	}
 	return picks, nil
 }
@@ -2547,7 +2548,7 @@ func printPicksChange(before, after provider.Provider, args []string) {
 // provider's list by itself (#2135).
 func refreshEveryCmd(rest []string) error {
 	if len(rest) < 1 || len(rest) > 2 {
-		return fmt.Errorf("magpie provider refresh-every <id> [30m|6h|1d|off]")
+		return fmt.Errorf("%s", product.Text("magpie provider refresh-every <id> [30m|6h|1d|off]"))
 	}
 	p, err := provider.Find(rest[0])
 	if err != nil {
@@ -2573,7 +2574,7 @@ func refreshEveryCmd(rest []string) error {
 // are exposed by (#2135); none clears them.
 func autoIncludeCmd(rest []string) error {
 	if len(rest) < 1 {
-		return fmt.Errorf("magpie provider auto-include <id> [rule…|none]")
+		return fmt.Errorf("%s", product.Text("magpie provider auto-include <id> [rule…|none]"))
 	}
 	p, err := provider.Find(rest[0])
 	if err != nil {

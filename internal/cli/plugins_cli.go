@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"os"
 	"sort"
 	"strconv"
@@ -166,7 +167,7 @@ func pluginCmd(args []string) error {
 		return nil
 	case "move-back", "moveback", "unmigrate":
 		// the built-ins are retired: there is no going back to one
-		return errors.New("magpie's built-in subscriptions are retired: their community plugins run them")
+		return errors.New(product.Text("magpie's built-in subscriptions are retired: their community plugins run them"))
 	case "builtin", "builtins", "built-in":
 		return builtinCmd(rest)
 	case "preset":
@@ -552,7 +553,7 @@ func pluginProvider(ctx context.Context, name string) (plugin.Provider, error) {
 		ids = append(ids, p.ID)
 	}
 	if len(ids) == 0 {
-		return plugin.Provider{}, fmt.Errorf("no plugin signs in to %q — add one: magpie plugin add <npm package>", name)
+		return plugin.Provider{}, fmt.Errorf(product.Text("no plugin signs in to %q — add one: magpie plugin add <npm package>"), name)
 	}
 	return plugin.Provider{}, fmt.Errorf("no plugin signs in to %q; they sign in to %s", name, strings.Join(ids, ", "))
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"io"
 	"net/http"
 	"os"
@@ -64,12 +65,12 @@ func backupRoutes(mux *http.ServeMux, w Windows) {
 			return
 		}
 		dir := downloads()
-		name := filepath.Join(dir, "magpie-"+time.Now().Format("2006-01-02")+backup.Ext)
+		name := filepath.Join(dir, product.ID+"-"+time.Now().Format("2006-01-02")+backup.Ext)
 		for i := 2; ; i++ { // never over an earlier one
 			if _, err := os.Stat(name); err != nil {
 				break
 			}
-			name = filepath.Join(dir, fmt.Sprintf("magpie-%s-%d%s", time.Now().Format("2006-01-02"), i, backup.Ext))
+			name = filepath.Join(dir, fmt.Sprintf("%s-%s-%d%s", product.ID, time.Now().Format("2006-01-02"), i, backup.Ext))
 		}
 		if err := edit.WriteAtomic(name, data); err != nil {
 			fail(rw, err)

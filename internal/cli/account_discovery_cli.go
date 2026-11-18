@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/settings"
@@ -13,7 +14,7 @@ import (
 // Subscription accounts. With no argument it says which is in effect.
 func accountsDiscoveryCmd(args []string) error {
 	if len(args) > 1 || len(args) == 1 && args[0] != "on" && args[0] != "off" {
-		return fmt.Errorf("usage: magpie accounts discovery [on|off]")
+		return fmt.Errorf("%s", product.Text("usage: magpie accounts discovery [on|off]"))
 	}
 	if len(args) == 1 {
 		s := settings.Load()

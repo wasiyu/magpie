@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"io"
 	"net/http"
 	"os"
@@ -163,7 +164,7 @@ func archiveRoutes(mux *http.ServeMux) {
 		}
 		defer body.Close()
 		rw.Header().Set("Content-Type", "application/json")
-		rw.Header().Set("Content-Disposition", `attachment; filename="magpie-request-`+name+`.json"`)
+		rw.Header().Set("Content-Disposition", `attachment; filename="`+product.ID+`-request-`+name+`.json"`)
 		if size >= 0 {
 			rw.Header().Set("Content-Length", fmt.Sprint(size))
 		}
@@ -177,7 +178,7 @@ func archiveRoutes(mux *http.ServeMux) {
 			return
 		}
 		defer body.Close()
-		path, err := saveDownload(downloads(), "magpie-request-"+name, ".json", body)
+		path, err := saveDownload(downloads(), product.ID+"-request-"+name, ".json", body)
 		if err != nil {
 			fail(rw, err)
 			return

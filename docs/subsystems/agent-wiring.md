@@ -452,3 +452,87 @@ are added), its model list came from the gateway, and a chat went through
 it, counted as Cherry Studio's. A link that arrives while its first-run
 welcome page is up shows no dialog; after "set up later" it does.
 `magpie cherrystudio add` opens the link; the TUI leaves the row out.
+
+## Jellytool build
+
+### Client protocol selection
+
+Jellytool prefers the model's declared native Responses API wherever the client
+can select it. Protocols come from `magpieModels` (`catalog.Model.APIs`), not a
+GPT-like model name. OpenCode and its shared adapters (OpenChamber, Air, MiMo
+Code and DevEco Code) write `models.<id>.provider.npm: "@ai-sdk/openai"` for
+Responses-native models, keeping the provider's Chat Completions SDK as the
+fallback for Chat-only or unknown models. The V1 provider shape remains readable
+by both OpenCode versions. Responses variants use `serviceTier` for fast mode;
+the existing Chat variants keep their compatibility body. `openCodeKept`
+recognizes both generated shapes while retaining user-defined variants.
+
+Pencil selects a protocol for its entire provider. Its new Jellytool provider
+defaults to `openai-responses` only when every selected model is native on
+Responses; mixed, unknown and empty catalogs retain Chat Completions. ZCode's
+new provider similarly chooses Responses for an all-Responses catalog and
+otherwise retains its Messages default. Existing explicit Pencil/ZCode protocol
+choices remain unchanged. These defaults are Jellytool-only.
+
+Codex, Penguin, Muse and Morph already use Responses. Pi and its shared adapters,
+omp, dsh, Droid and Grok Build already select a native API per model. Claude Code
+and Gemini CLI keep their own Messages/Gemini APIs; the gateway translates when
+the chosen upstream speaks another protocol. Clients without a verified
+Responses configuration retain their existing adapter contract. Updating an
+adapter does not connect a previously unconnected client or adopt another
+gateway's configuration. `TestJellytoolOpenCodeNativeProtocol`,
+`TestJellytoolProviderProtocolDefaults` and
+`TestJellytoolOpenCodeResponsesVariants` cover these new choices, mixed catalogs,
+explicit choices, variant preservation and repeat sync.
+
+Provider display labels use the build's product name. Codex's provider table
+and OpenCode's provider JSON have `name: Jellytool` in that build; their provider
+id stays `magpie`, so reads, connection detection and disconnect keep using the
+same ownership keys. User-defined provider/model names are not rewritten.
+`TestBrandProviderDisplayNames` checks the written Codex config, OpenCode's
+provider JSON and an unchanged custom provider name in both builds. See
+[display branding](gui-shell.md#jellytool-display-branding) for the shared text rule.
+
+[`agent.All`](../../internal/agent/agents.go) in a `jellytool` build constructs
+only local Claude Code, Codex, OpenCode and WorkBuddy adapters. It does not
+construct WSL or external plugin adapters. The independent GUI retains the
+existing Agent model/connection API, skips Follow on status reads, and does
+not register automatic catalog synchronization. Saving supplier selections
+therefore leaves existing Agent files alone. WorkBuddy reuses the existing
+`provider` field and `ListsModels` path. Explicit WorkBuddy model-list edits on
+the Agent page synchronously refresh that connected adapter; supplier saves do
+not write Agent files.
+
+Jellytool's WorkBuddy entries have their own `vendor: jellytool`, port 3435 and
+`jellytool-workbuddy` Key. Existing magpie entries are retained and never count
+as a Jellytool connection. Reads are side-effect free. Before the first write,
+[`workbuddy_jellytool.go`](../../internal/agent/workbuddy_jellytool.go) persists
+a path-specific original-file snapshot in Jellytool's private stash; a backup
+failure prevents the write. Disconnect removes only Jellytool entries. It restores
+original bytes when the remaining JSON matches the original, otherwise preserves
+subsequent user/WorkBuddy/magpie changes. An originally absent file is removed
+only when no other data remains. Restore failures retain the snapshot for retry.
+When the selected upstream model's native API is Responses, Jellytool writes
+`api: "openai-responses"` and `/v1/responses` for WorkBuddy's Responses client
+(verified against WorkBuddy 5.9.3). Other models retain Chat Completions. Ordinary
+magpie/CodeBuddy entries keep their existing protocol behavior. A WorkBuddy entry
+pointed at another machine retains its explicit URL, key and protocol together.
+An empty selected catalog retains the disconnect path. Disconnect preview runs
+this same operation on a subprocess copy without changing source files or stash.
+
+These paths are product-gated; ordinary magpie behavior is unchanged. Tests use
+mocked catalogs and temporary HOME/XDG roots, including existing magpie entries,
+Agent HTTP routes, failed backup/restore and preview. Actual WorkBuddy acceptance
+and simultaneous live processes remain manual checks. See
+[Jellytool P3](../plans/jellytool-plugin-p3.md).
+
+
+### Jellytool P3 preparation
+
+A `jellytool` build's `agent.All` is deliberately limited to the local Claude Code,
+Codex, OpenCode and WorkBuddy adapters. The offline gate
+[`TestJellytoolLocalAgentSet`](../../internal/agent/jellytool_p3_test.go) runs with an
+empty temporary HOME, requires native adapters, and rejects WSL entries. This proves
+product composition only; it does not prove that a real tool accepts the generated
+configuration or that an existing magpie installation coexists. Those checks require
+separate platform, account and configuration authorization. See [Jellytool P3 preparation](../plans/jellytool-plugin-p3.md).

@@ -3,6 +3,7 @@ package cli
 import (
 	"cmp"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"maps"
 	"slices"
 	"strconv"
@@ -227,7 +228,7 @@ func splitModelRef(s string) (string, string, error) {
 	ref := strings.TrimPrefix(strings.TrimSpace(s), "magpie/")
 	pid, model, ok := strings.Cut(ref, "/")
 	if !ok || model == "" {
-		return "", "", fmt.Errorf("name a model as provider/model, not %q (magpie models lists them)", s)
+		return "", "", fmt.Errorf(product.Text("name a model as provider/model, not %q (magpie models lists them)"), s)
 	}
 	return pid, model, nil
 }
@@ -629,7 +630,7 @@ func resetModelPrice(ref string) error {
 	wid, _, _ := strings.Cut(key, "/")
 	if strings.HasPrefix(key, settings.AnyProvider) {
 		if !dropped {
-			return fmt.Errorf("%s has no price of yours to reset — magpie model prices lists the ones you set", key)
+			return fmt.Errorf(product.Text("%s has no price of yours to reset — magpie model prices lists the ones you set"), key)
 		}
 		fmt.Println(green.Render("✓"), key,
 			muted.Render("no longer has a price of yours; it is costed at what its provider lists, or its maker's on models.dev"))
@@ -637,10 +638,10 @@ func resetModelPrice(ref string) error {
 	}
 	if !dropped {
 		if _, wide := statedPrice(s.ModelPrices, wid+"/*"); wide {
-			return fmt.Errorf("%s has no price of its own; what it costs is what you set for every model of this provider, %s/*, which magpie model price %s --reset takes away",
+			return fmt.Errorf(product.Text("%s has no price of its own; what it costs is what you set for every model of this provider, %s/*, which magpie model price %s --reset takes away"),
 				key, wid, typedRef(wid+"/*"))
 		}
-		return fmt.Errorf("%s has no price of its own to reset — magpie model prices lists the ones you set", key)
+		return fmt.Errorf(product.Text("%s has no price of its own to reset — magpie model prices lists the ones you set"), key)
 	}
 	if !there {
 		fmt.Println(green.Render("✓"), key,
@@ -752,7 +753,7 @@ func modelSuffix(args []string) error {
 	case "off", "no", "false":
 		mode = provider.SuffixOff
 	default:
-		return fmt.Errorf("magpie model suffix on|own|off, not %q", args[0])
+		return fmt.Errorf(product.Text("magpie model suffix on|own|off, not %q"), args[0])
 	}
 	if err := provider.SetSuffixMode(mode); err != nil {
 		return err
@@ -824,7 +825,7 @@ func modelCompact(args []string) error {
 	default:
 		n, err := provider.ParseTokens(args[0])
 		if err != nil || n <= 0 {
-			return fmt.Errorf("magpie model compact on|off|<size such as 500k>, not %q", args[0])
+			return fmt.Errorf(product.Text("magpie model compact on|off|<size such as 500k>, not %q"), args[0])
 		}
 		if err := provider.SetCompactAt(n); err != nil {
 			return err
@@ -1196,7 +1197,7 @@ func modelContext(args []string) error {
 					id, p.ID+"/*", resetCommand("context", p.ID+"/*"))
 			}
 			if _, served := provider.ServedEntryOf(id); served {
-				return fmt.Errorf("%s has no window of its own to reset — magpie model context %s says what it takes now", id, typedRef(id))
+				return fmt.Errorf(product.Text("%s has no window of its own to reset — magpie model context %s says what it takes now"), id, typedRef(id))
 			}
 			return fmt.Errorf("%s has no window of its own to reset", id)
 		}
@@ -1244,7 +1245,7 @@ func modelOutput(args []string) error {
 					key, wid+"/*", resetCommand("output", wid+"/*"))
 			}
 			if _, served := provider.ServedEntryOf(key); served {
-				return fmt.Errorf("%s has no reply limit of its own to reset — magpie model output %s says what it answers with now", key, typedRef(key))
+				return fmt.Errorf(product.Text("%s has no reply limit of its own to reset — magpie model output %s says what it answers with now"), key, typedRef(key))
 			}
 			return fmt.Errorf("%s has no reply limit of its own to reset", key)
 		}
@@ -1515,11 +1516,11 @@ func resetWireName(p provider.Provider, model, id, shown string) error {
 			// provider has nothing like is never asked for by any name,
 			// so naming the one in force would claim a request magpie
 			// does not make
-			return fmt.Errorf("%s is not a model of %s magpie knows of, so there is nothing to take away and none in force: a name is only kept for a model the provider serves, and this one is asked for by no name", id, p.Name)
+			return fmt.Errorf(product.Text("%s is not a model of %s magpie knows of, so there is nothing to take away and none in force: a name is only kept for a model the provider serves, and this one is asked for by no name"), id, p.Name)
 		}
 		every := "'" + p.ID + "/*'"
 		if provider.HasUpstreamName(p.ID + "/*") {
-			return fmt.Errorf("%s has no name of its own; what it is asked for is %s, the name given for every model of %s, which magpie model wire %s --reset takes away",
+			return fmt.Errorf(product.Text("%s has no name of its own; what it is asked for is %s, the name given for every model of %s, which magpie model wire %s --reset takes away"),
 				id, now, p.Name, every)
 		}
 		if model == "*" {
@@ -1531,7 +1532,7 @@ func resetWireName(p provider.Provider, model, id, shown string) error {
 			if kept := ownKeptSaid(&p); kept != "" {
 				return fmt.Errorf("%s has no name of its own to reset, so there was nothing to take away: %s", id, kept)
 			}
-			return fmt.Errorf("%s has no name of its own to reset, so there was nothing to take away: every model of %s is already asked for by the name magpie knows it by", id, p.Name)
+			return fmt.Errorf(product.Text("%s has no name of its own to reset, so there was nothing to take away: every model of %s is already asked for by the name magpie knows it by"), id, p.Name)
 		}
 		return fmt.Errorf("%s has no name of its own to reset, so there was nothing to take away: it is already asked for as %s", id, now)
 	}
@@ -1658,7 +1659,7 @@ func exampleOf(p *provider.Provider, name string) string {
 // modelDisable adds models, by id or glob, to the disabled list (#1867).
 func modelDisable(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("name the models to disable, by id or glob: magpie model disable '*fable*'")
+		return fmt.Errorf("%s", product.Text("name the models to disable, by id or glob: magpie model disable '*fable*'"))
 	}
 	if err := provider.DisableModels(args...); err != nil {
 		return err
@@ -1681,7 +1682,7 @@ func modelDisable(args []string) error {
 // modelEnable takes models off the disabled list.
 func modelEnable(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("name the models to enable, as magpie model disabled lists them")
+		return fmt.Errorf("%s", product.Text("name the models to enable, as magpie model disabled lists them"))
 	}
 	missing, err := provider.EnableModels(args...)
 	if err != nil {

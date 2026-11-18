@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"io"
 	"net/http"
 	"os"
@@ -43,11 +44,11 @@ func goroutinesCmd(args []string) error {
 	for _, a := range args {
 		switch {
 		case strings.HasPrefix(a, "-") && a != "-":
-			return fmt.Errorf("unknown flag %s: nothing was written (magpie goroutines [<file>])", a)
+			return fmt.Errorf(product.Text("unknown flag %s: nothing was written (magpie goroutines [<file>])"), a)
 		case a == "-" || strings.TrimSpace(a) == "":
-			return fmt.Errorf("%q is not a file name: nothing was written (magpie goroutines [<file>])", a)
+			return fmt.Errorf(product.Text("%q is not a file name: nothing was written (magpie goroutines [<file>])"), a)
 		case file != "":
-			return errors.New("magpie goroutines takes one file: nothing was written (magpie goroutines [<file>])")
+			return errors.New(product.Text("magpie goroutines takes one file: nothing was written (magpie goroutines [<file>])"))
 		default:
 			file = a
 		}
@@ -62,7 +63,7 @@ func goroutinesCmd(args []string) error {
 	f, err := os.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("%s is there already: name another file (magpie goroutines <file>)", file)
+			return fmt.Errorf(product.Text("%s is there already: name another file (magpie goroutines <file>)"), file)
 		}
 		return err
 	}
@@ -91,7 +92,7 @@ func fetchGoroutines(base string) ([]byte, gateway.GoroutineStats, error) {
 	c := &http.Client{Timeout: goroutinesWait}
 	res, err := c.Get(base + gateway.GoroutinesPath)
 	if err != nil {
-		return nil, st, fmt.Errorf("no magpie answers at %s, so there is nothing to dump: is magpie running? (%v)", base, err)
+		return nil, st, fmt.Errorf(product.Text("no magpie answers at %s, so there is nothing to dump: is magpie running? (%v)"), base, err)
 	}
 	defer res.Body.Close()
 	body, err := io.ReadAll(res.Body)
@@ -99,7 +100,7 @@ func fetchGoroutines(base string) ([]byte, gateway.GoroutineStats, error) {
 		return nil, st, fmt.Errorf("the dump from %s was cut off: %w", base, err)
 	}
 	if res.StatusCode == http.StatusNotFound {
-		return nil, st, fmt.Errorf("the magpie at %s is older than this one and has no goroutine dump: update it, then run magpie goroutines again", base)
+		return nil, st, fmt.Errorf(product.Text("the magpie at %s is older than this one and has no goroutine dump: update it, then run magpie goroutines again"), base)
 	}
 	if res.StatusCode != http.StatusOK {
 		var e struct {
@@ -111,13 +112,13 @@ func fetchGoroutines(base string) ([]byte, gateway.GoroutineStats, error) {
 		if json.Unmarshal(body, &e) == nil && e.Error.Message != "" {
 			msg = e.Error.Message
 		}
-		return nil, st, fmt.Errorf("the magpie at %s answered %s: %s", base, res.Status, msg)
+		return nil, st, fmt.Errorf(product.Text("the magpie at %s answered %s: %s"), base, res.Status, msg)
 	}
 	if !bytes.HasPrefix(body, []byte("goroutine ")) {
-		return nil, st, fmt.Errorf("what %s answered is not a goroutine dump (%d bytes): is it magpie?", base, len(body))
+		return nil, st, fmt.Errorf(product.Text("what %s answered is not a goroutine dump (%d bytes): is it magpie?"), base, len(body))
 	}
 	if err := json.Unmarshal([]byte(res.Header.Get(gateway.GoroutineStatsHeader)), &st); err != nil {
-		return nil, st, fmt.Errorf("the magpie at %s sent no process numbers with its dump: %v", base, err)
+		return nil, st, fmt.Errorf(product.Text("the magpie at %s sent no process numbers with its dump: %v"), base, err)
 	}
 	return body, st, nil
 }

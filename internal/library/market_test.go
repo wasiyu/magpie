@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/yetone/magpie/internal/product"
 )
 
 func registryEntry(t *testing.T, s string) *registryServer {
@@ -325,24 +327,123 @@ func TestInstallFromRegistry(t *testing.T) {
 	}
 }
 
-func TestMagpieImageIsOptIn(t *testing.T) {
+func TestBuiltInImageMarket(t *testing.T) {
 	sandbox(t)
-	ok(t)(InstallServer("magpie-image", nil, nil))
+	ok(t)(InstallServer(selfServerName, nil, nil))
 	list, err := MarketServers("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	i := slices.IndexFunc(list, func(m MarketServer) bool { return m.ID == "magpie-image" })
-	if i < 0 || !list[i].OptIn || list[i].Have != "magpie-image" {
+	i := slices.IndexFunc(list, func(m MarketServer) bool { return m.ID == selfServerName })
+	if i < 0 || list[i].OptIn == product.Jellytool || list[i].Have != selfServerName {
 		t.Fatalf("market: %+v", list)
 	}
 	l, err := load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := l.server("magpie-image")
-	if s == nil || len(s.Agents) != 0 || !filepath.IsAbs(s.Command) || strings.Join(s.Args, " ") != "mcp image" {
+	s := l.server(selfServerName)
+	if s == nil || (product.Jellytool && len(s.Agents) == 0) || (!product.Jellytool && len(s.Agents) != 0) || !filepath.IsAbs(s.Command) || strings.Join(s.Args, " ") != "mcp image" {
 		t.Fatalf("added as %+v", s)
+	}
+}
+
+func TestEnsureImageServerIsIdempotent(t *testing.T) {
+	if !product.Jellytool {
+		t.Skip("Jellytool-only default")
+	}
+	sandbox(t)
+	if _, err := EnsureImageServer(); err != nil {
+		t.Fatal(err)
+	}
+	l, err := load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := l.server(selfServerName); s == nil || !filepath.IsAbs(s.Command) || strings.Join(s.Args, " ") != "mcp image" {
+		t.Fatalf("image server: %+v", l.server(selfServerName))
+	}
+	if _, err := EnsureImageServer(); err != nil {
+		t.Fatal(err)
+	}
+	l, err = load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	for _, s := range l.MCP {
+		if serverKey(s) == "magpie mcp image" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("image servers: %d", count)
+	}
+}
+
+func TestEnsureImageServerMovesJellytoolDevelopmentBundle(t *testing.T) {
+	if !product.Jellytool {
+		t.Skip("Jellytool-only development bundle migration")
+	}
+	h := sandbox(t)
+	current := filepath.Join(h, "Applications", "Jellytool.app", "Contents", "MacOS", "jellytool")
+	write(t, current, "current")
+	thisMagpie(t, current)
+	old := filepath.Join(h, ".cache", "jellytool-build", "artifacts", "old", "Jellytool.app", "Contents", "MacOS", "jellytool")
+	write(t, old, "old")
+	seedLibrary(t, Server{Name: selfServerName, Transport: "stdio", Command: old, Args: []string{"mcp", "image"}, Agents: []string{"codex"}})
+
+	if _, err := EnsureImageServer(); err != nil {
+		t.Fatal(err)
+	}
+	l, err := load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := l.server(selfServerName).Command; got != current {
+		t.Fatalf("image server command: %q, want %q", got, current)
+	}
+	if got := storedCommand(t, selfServerName); got != current {
+		t.Fatalf("library.json command: %q, want %q", got, current)
+	}
+}
+
+func TestEnsureImageServerKeepsLegacyName(t *testing.T) {
+	if !product.Jellytool {
+		t.Skip("Jellytool-only compatibility")
+	}
+	sandbox(t)
+	if _, err := SaveServer("", Server{Name: "magpie-image", Transport: "stdio", Command: "magpie", Args: []string{"mcp", "image"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureImageServer(); err != nil {
+		t.Fatal(err)
+	}
+	l, err := load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.server("magpie-image") == nil || l.server(selfServerName) != nil {
+		t.Fatalf("legacy image server was duplicated: %+v", l.MCP)
+	}
+}
+
+func TestEnsureImageServerImportsLegacyAgentEntry(t *testing.T) {
+	if !product.Jellytool {
+		t.Skip("Jellytool-only compatibility")
+	}
+	h := sandbox(t)
+	write(t, filepath.Join(h, ".claude.json"), `{"mcpServers":{"magpie-image":{"command":"magpie","args":["mcp","image"]}}}`)
+	if _, err := EnsureImageServer(); err != nil {
+		t.Fatal(err)
+	}
+	l, err := load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := l.server("magpie-image")
+	if s == nil || l.server(selfServerName) != nil || !slices.Equal(s.Agents, []string{"claude"}) {
+		t.Fatalf("imported image server: %+v", l.MCP)
 	}
 }
 
@@ -351,7 +452,7 @@ func TestMagpieImageIsOptIn(t *testing.T) {
 // model list marks video models (#1399).
 func TestMagpieImageSaysVideoModels(t *testing.T) {
 	d := selfServer().Description
-	if strings.Contains(d, "Grok subscription") || !strings.Contains(d, "video model set up in Magpie") {
+	if strings.Contains(d, "Grok subscription") || !strings.Contains(d, product.Text("video model set up in Magpie")) {
 		t.Fatalf("description %q", d)
 	}
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/edit"
+	"github.com/yetone/magpie/internal/product"
 )
 
 // The protocol Pi asks magpie's models on, picked in Pi's row
@@ -64,7 +65,7 @@ func piProviderOn(agentID string, models []catalog.Model, gw, on string) map[str
 	// Without it a turn of Pi's on Chat or Messages reached the gateway
 	// with no session: its usage had none and "Record gateway
 	// conversations" kept none of it (akic404 on Discord).
-	return map[string]any{"name": "magpie", "baseUrl": gw + "/v1", "api": api, "apiKey": keyAt(gw),
+	return map[string]any{"name": product.Name, "baseUrl": gw + "/v1", "api": api, "apiKey": keyAt(gw),
 		"compat": map[string]any{"sendSessionAffinityHeaders": true}, "models": ms}
 }
 

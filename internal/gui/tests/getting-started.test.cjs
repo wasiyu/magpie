@@ -1,31 +1,22 @@
 // Run with Node's test runner and Playwright on the module path; see README.md.
-// wangye1644294 on X: magpie isn't friendly to a first-time user; a guide,
-// routing set up in a click and the agents found here, please. A new user's
-// Agents page (the window's first page, and the panel's first tab) has a Get
-// started card: add a model source, connect an agent (those found here, each
-// connected in a click), and, optionally, a routing group made of their own
-// models in a click. Each step is ticked from the state the server gives,
-// never from having been seen; the card goes once the first two are done,
-// and put away it stays away, kept in the settings, not the page's storage.
-// Renzexi01 on X (一进来就这么复杂): while the card shows, the agents'
-// list is folded under it, behind "Show all {n} agents", since its second
-// step names the ones found here; one connected, or the card put away,
-// and the list is in view as before. Put away, its line says Settings ›
-// General brings it back, and a row there does (the window).
-// Both engines, a wide and a narrow window and the panel, every language.
-// No backend, the API is faked here.
+// The window's Get started page keeps its steps and actions after completion. Unconfigured
+// launches open it first; a completed launch keeps the user's last page. The
+// compact panel still hides its card after completion or explicit dismissal.
+// Renzexi01 on X (一进来就这么复杂): while the panel's card shows, the agents'
+// list is folded under it, since its last step names the ones found here.
+// Both engines, wide and narrow windows and the panel, every language; no backend.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { test } = require("node:test");
 const { chromium, webkit } = require("playwright");
 
-const assets = path.resolve(__dirname, "../assets");
+const assets = process.env.MAGPIE_GUIDE_ASSETS || path.resolve(__dirname, "../assets");
 const shots = process.env.ARTIFACT_DIR;
 
 // world is what the fake server knows, changed by the page's writes
 function newWorld() {
-  return { served: 0, wired: false, hidden: false, groups: [] };
+  return { provider: false, served: 0, wired: false, hidden: false };
 }
 
 function agents(w) {
@@ -43,16 +34,12 @@ function agents(w) {
   ];
 }
 
-const templates = [
-  { kind: "smart", group: { id: "smart-split", name: "Hard to strong, easy to cheap", members: ["relay/m1", "other/m2"] } },
-  { kind: "thrifty", need: "cheap", of: "m1", group: { id: "cheap-first", name: "Cheap first", members: [] } },
-  { kind: "steady", group: { id: "never-stuck", name: "Never stuck", members: ["relay/m1", "other/m2"] } },
-];
-
 function server(lang, w, posts) {
   const settings = () => ({ lang, theme: "light", guideHidden: w.hidden || undefined });
   const state = () => ({ agents: agents(w), profiles: [], served: w.served, settings: settings() });
-  const groups = () => ({ groups: w.groups, models: [], pools: [], deciders: [], templates });
+  const provider = () => ({ id: "relay", name: "Relay", icon: "generic", host: "fixture.invalid", chat: "https://fixture.invalid/v1/chat/completions", ready: true,
+    models: [{ id: "m1", name: "m1", on: !!w.served }], chosen: w.served ? ["m1"] : [], noModels: !w.served,
+    key: { set: true, masked: "fixture" }, keyList: [], agents: [], fallback: [] });
   return async (route) => {
     const req = route.request(), url = new URL(req.url());
     const json = (data, status = 200) => route.fulfill({ status, json: data });
@@ -69,17 +56,11 @@ function server(lang, w, posts) {
       w.wired = true;
       return json(state());
     }
-    if (url.pathname === "/api/groups/template") {
-      const { kind, name } = req.postDataJSON();
-      const tp = templates.find((x) => x.kind === kind);
-      w.groups.push({ ...tp.group, name });
-      return json(groups());
-    }
-    if (url.pathname === "/api/groups") return json(groups());
+    if (url.pathname === "/api/groups") return json({ groups: [], models: [], pools: [], deciders: [] });
     if (url.pathname === "/api/usage/quotas") return json([]);
     if (url.pathname === "/api/plugins") return json({ plugins: [] });
     if (url.pathname === "/api/agents/cli") return json({ agents: {}, pending: false });
-    if (url.pathname === "/api/providers") return json({ providers: [], presets: [], excluded: [], gateway: { running: true, window: true } });
+    if (url.pathname === "/api/providers") return json({ providers: w.provider ? [provider()] : [], presets: [], excluded: [], gateway: { running: true, window: true } });
     if (url.pathname.startsWith("/api/")) return json({});
     const file = path.join(assets, url.pathname === "/" ? "index.html" : url.pathname);
     const contentType = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png" }[path.extname(file)];
@@ -88,14 +69,14 @@ function server(lang, w, posts) {
 }
 
 const LAYOUTS = [
-  { name: "window", url: "/?view=agents", viewport: { width: 1100, height: 760 } },
-  { name: "narrow", url: "/?view=agents", viewport: { width: 420, height: 760 } },
+  { name: "window", url: "/", viewport: { width: 1100, height: 760 } },
+  { name: "narrow", url: "/", viewport: { width: 420, height: 760 } },
   { name: "panel", url: "/?mode=panel", viewport: { width: 400, height: 640 } },
 ];
 const LANGS = ["en", "zh", "zh-TW", "ja", "de"];
-const STRINGS = ["Get started", "Add a model source", "Connect an agent", "Set up routing (optional)", "Hide Get started",
+const STRINGS = ["Get started", "Connect a provider", "Model selection", "Choose models", "Connect an agent", "Hide Get started",
   "A subscription you already pay for, a provider, or an API key", "magpie found these on this computer. Click one to connect it:",
-  "A routing group sends each request to the right model, and to the next one when a model fails", "+{n} more below", "{n} of {m} done", "{n} models ready to use", "Add “{name}”"];
+  "Open a provider, choose the models to share, then Save.", "+{n} more below", "{n} of {m} done", "{n} models ready to use", "Open Providers", "Open Agents"];
 
 async function open(browser, layout, lang, w, posts) {
   const context = await browser.newContext({ viewport: layout.viewport, reducedMotion: "reduce" });
@@ -107,18 +88,18 @@ async function open(browser, layout, lang, w, posts) {
   page.on("pageerror", (e) => page.errors.push(e.message));
   await page.route("**/*", server(lang, w, posts));
   await page.goto("http://magpie.test" + layout.url);
-  // folded under Get started, the rows are there but out of view
-  await page.locator(".row.agent").first().waitFor({ state: "attached" });
+  await page.waitForFunction(() => load.done);
   return { context, page };
 }
 
 // the agents' rows in view, not folded under the list's Show more
 const inView = (page) => page.locator(".row.agent").evaluateAll((rs) => rs.filter((r) => !r.closest(".agent-fold")).map((r) => r.dataset.id || r.id));
 const folded = (page) => page.locator(".agent-fold .row.agent").count();
+const cardFor = (page, layout) => page.locator(layout.name === "panel" ? "#agentsLead .guide" : "#quickstart .guide");
 const stepDone = (page, step) => page.locator(`.guide-step[data-step="${step}"]`).evaluate((e) => e.classList.contains("done"));
-const tops = (page) => page.evaluate(() => [document.scrollingElement.scrollTop, document.querySelector("#view-agents")?.scrollTop]);
+const tops = (page) => page.evaluate(() => [document.scrollingElement.scrollTop, document.querySelector("main.view:not([hidden])")?.scrollTop]);
 const sideways = (page) => page.evaluate(() => {
-  const v = document.querySelector("#view-agents"), g = document.querySelector(".guide");
+  const v = document.querySelector("main.view:not([hidden])"), g = v.querySelector(".guide");
   return v.scrollWidth > v.clientWidth + 1 || document.scrollingElement.scrollWidth > innerWidth
     || (g && [...g.querySelectorAll("*")].some((e) => e.getBoundingClientRect().right > g.getBoundingClientRect().right + 1));
 });
@@ -126,7 +107,7 @@ const sideways = (page) => page.evaluate(() => {
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
   for (const lang of LANGS) {
     for (const layout of LAYOUTS) {
-      test(`${engine} ${lang} ${layout.name}: Get started ticks from state, connects in a click and goes once done`, async (t) => {
+      test(`${engine} ${lang} ${layout.name}: Get started updates its steps and preserves completed window guidance`, async (t) => {
         const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
         t.after(() => browser.close());
         const w = newWorld(), posts = [];
@@ -137,26 +118,29 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         }
 
         // a new user: nothing served, nothing wired
-        const card = page.locator("#agentsLead .guide");
+        const card = cardFor(page, layout);
         await card.waitFor();
+        if (layout.name !== "panel") {
+          assert.equal(await page.locator("#agentsLead .guide").count(), 0, "guidance lives on its own page");
+          assert.equal(await page.locator('.guide-x').count(), 0, "the permanent page has no dismiss control");
+          assert.equal(await page.locator('#nav [data-view="quickstart"]').textContent(), await tr("Get started"));
+        }
         assert.equal((await page.locator(".guide-h").textContent()), await tr("Get started"));
         assert.equal(await stepDone(page, "source"), false);
+        assert.equal(await stepDone(page, "models"), false);
         assert.equal(await stepDone(page, "agent"), false);
-        assert.equal(await page.locator(".guide-n").textContent(), await tr("{n} of {m} done", { n: 0, m: 2 }));
+        assert.deepEqual(await card.locator(".guide-step").evaluateAll((es) => es.map((e) => e.dataset.step)), ["source", "models", "agent"], "only provider, model selection and agent steps, in order");
+        assert.deepEqual(await card.locator(".guide-title").allTextContents(), await Promise.all(["Connect a provider", "Model selection", "Connect an agent"].map((s) => tr(s))));
+        assert.equal(await page.locator(".guide-n").textContent(), await tr("{n} of {m} done", { n: 0, m: 3 }));
         // the agents found here are named, Cursor (never connectable) not;
         // with no models yet they can't be connected
         assert.deepEqual(await page.locator(".guide-agent").evaluateAll((bs) => bs.map((b) => b.dataset.id)), ["codex", "claude", "opencode"]);
         assert.ok(await page.locator(".guide-agent").evaluateAll((bs) => bs.every((b) => b.disabled)));
-        // routing waits for a model source: no button yet
-        assert.equal(await page.locator(".guide-tpl").count(), 0);
-        // the card alone, the list folded under it
-        assert.deepEqual(await inView(page), [], "no agent row in view under Get started");
-        assert.equal(await folded(page), 5);
-        if (layout.name !== "panel") {
-          const more = page.locator(".agent-more");
-          assert.equal((await more.textContent()).trim(), await tr("Show all {n} agents", { n: 5 }));
-          if (lang !== "en") assert.notEqual(await tr("Show all {n} agents"), "Show all {n} agents", `${lang} has "Show all {n} agents"`);
-          assert.equal(await more.getAttribute("aria-expanded"), "false");
+        assert.equal(await card.locator('[data-step="routing"], .guide-tpl').count(), 0, "routing is absent from guidance");
+        if (layout.name === "panel") {
+          // the card alone, the list folded under it
+          assert.deepEqual(await inView(page), [], "no agent row in view under Get started");
+          assert.equal(await folded(page), 5);
         }
         assert.equal(await sideways(page), false, "nothing runs off sideways");
         if (shots && (lang === "en" || lang === "zh")) await page.screenshot({ path: path.join(shots, `getting-started-${engine}-${lang}-${layout.name}-new.png`) });
@@ -173,53 +157,133 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           await page.locator("#addSheet").waitFor({ state: "visible" });
         }
 
-        // a provider added: the step is ticked from the state, the agents can
-        // be connected, and a routing group is a click away
+        // Credentials alone complete only step 1, not model selection.
+        w.provider = true;
+        await page.goto("http://magpie.test" + layout.url);
+        await card.locator('[data-step="source"].done').waitFor();
+        assert.equal(await stepDone(page, "models"), false);
+        assert.equal(await page.locator(".guide-n").textContent(), await tr("{n} of {m} done", { n: 1, m: 3 }));
+        assert.equal(await page.locator('.guide-agent[data-id="codex"]').isDisabled(), true);
+        await card.locator('[data-step="models"] .guide-go').click();
+        if (layout.name === "panel") assert.ok(posts.includes("/api/window/main?view=providers"));
+        else {
+          await page.locator("#view-providers").waitFor({ state: "visible" });
+          await page.locator("#modal .editor").waitFor({ state: "visible" });
+        }
+
+        // Saving a model selection completes step 2 and enables connection.
         w.served = 12;
         await page.goto("http://magpie.test" + layout.url);
         await card.waitFor();
         assert.equal(await stepDone(page, "source"), true);
-        assert.match(await page.locator('.guide-step[data-step="source"] .guide-say').textContent(), /12/);
-        assert.equal(await page.locator(".guide-n").textContent(), await tr("{n} of {m} done", { n: 1, m: 2 }));
+        assert.equal(await stepDone(page, "models"), true);
+        assert.match(await page.locator('.guide-step[data-step="models"] .guide-say').textContent(), /12/);
+        assert.equal(await page.locator(".guide-n").textContent(), await tr("{n} of {m} done", { n: 2, m: 3 }));
         const codex = page.locator('.guide-agent[data-id="codex"]');
         assert.equal(await codex.isDisabled(), false);
-        const tpl = page.locator(".guide-tpl");
-        await tpl.waitFor();
-        assert.equal(await tpl.getAttribute("data-kind"), "steady", "the harmless template first; the one that can't be made isn't offered");
-        const name = await tr("Never stuck");
-        assert.equal(await tpl.textContent(), await tr("Add “{name}”", { name }));
         if (shots && (lang === "en" || lang === "zh")) await page.screenshot({ path: path.join(shots, `getting-started-${engine}-${lang}-${layout.name}-source.png`) });
 
         const before = await tops(page);
-        await tpl.click();
-        await page.locator('.guide-step[data-step="routing"].done').waitFor();
-        assert.ok(posts.includes("/api/groups/template"));
-        assert.equal(w.groups[0].name, name, "saved under the name shown");
-        assert.match(await page.locator('.guide-step[data-step="routing"] .guide-say').textContent(), new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-
-        // one click connects Codex, and with both steps done the card goes
+        // Connecting completes all three required steps. The window keeps every
+        // completed step and its actions; only the compact panel's optional card goes away.
         await codex.click();
-        await card.waitFor({ state: "detached" });
+        if (layout.name === "panel") await card.waitFor({ state: "detached" });
+        else {
+          await page.locator('#quickstart .guide-step[data-step="agent"].done').waitFor();
+          assert.equal(await card.locator(".guide-step").count(), 3);
+          assert.equal(await card.locator(".guide-step.done .guide-tick svg").count(), 3);
+          assert.equal(await card.locator('.guide-step[data-step="agent"] .guide-say').textContent(), "Codex");
+          assert.equal(await page.evaluate(() => view), "quickstart", "completion leaves the reader on the guide");
+          assert.equal(await card.locator(".guide-n").textContent(), await tr("{n} of {m} done", { n: 3, m: 3 }));
+          assert.equal(await sideways(page), false);
+          if (shots && (lang === "en" || lang === "zh")) await page.screenshot({ path: path.join(shots, `getting-started-${engine}-${lang}-${layout.name}-complete.png`) });
+        }
         assert.ok(posts.includes("/api/agents/connect/codex"));
         assert.deepEqual(await tops(page), before, "no click moved the page");
         assert.equal(top[0], before[0]);
 
-        // done stays done: a reload brings no card back, and the agent
-        // connected is in view, the rest folded as for anyone
+        // A configured launch restores the last page. The guide can still be
+        // opened and used to configure each step again.
+        if (layout.name !== "panel") await page.locator('#nav [data-view="agents"]').click();
         await page.goto("http://magpie.test" + layout.url);
+        await page.waitForFunction(() => load.done);
         await page.locator(".row.agent").first().waitFor();
-        assert.equal(await page.locator(".guide").count(), 0);
-        assert.equal(await folded(page), 4);
+          if (layout.name === "panel") {
+            assert.equal(await card.count(), 0);
+            // the agent connected is in view, the rest folded as for anyone
+            assert.equal(await folded(page), 4);
+          } else {
+          await page.locator('#nav [data-view="quickstart"]').click();
+          await card.waitFor();
+          assert.equal(await card.locator(".guide-step.done .guide-tick svg").count(), 3);
+          await page.reload();
+          await card.waitFor();
+          assert.equal(await card.locator(".guide-step").count(), 3, "a completed guide survives reload");
+          // Completed steps still lead to the full configuration pages. Opening
+          // them must not reconnect an agent or change the saved model selection.
+          for (const [step, target, label] of [["source", "providers", "Open Providers"], ["models", "providers", "Choose models"], ["agent", "agents", "Open Agents"]]) {
+            const action = card.locator(`[data-step="${step}"]`).getByRole("button", { name: await tr(label), exact: true });
+            assert.equal(await action.count(), 1, `${step} keeps a configuration action after completion`);
+            assert.equal(await action.textContent(), await tr(label));
+            assert.equal(await action.isEnabled(), true);
+            await action.click();
+            await page.locator(`#view-${target}`).waitFor({ state: "visible" });
+            assert.equal(await page.evaluate(() => view), target);
+            if (step === "models") {
+              await page.locator("#modal .editor").waitFor({ state: "visible" });
+              await page.keyboard.press("Escape");
+              await page.locator("#modal").waitFor({ state: "hidden" });
+            }
+            await page.locator('#nav [data-view="quickstart"]').click();
+            await card.waitFor();
+            assert.equal(await card.locator(".guide-step.done .guide-tick svg").count(), 3);
+          }
+          assert.equal(posts.filter((p) => p === "/api/agents/connect/codex").length, 1, "navigation does not reconnect the agent");
+          assert.equal(posts.filter((p) => p === "/api/provider/save" || p === "/api/groups/template").length, 0, "navigation changes no model selection or routing group");
+        }
         assert.deepEqual(page.errors, []);
       });
 
-      test(`${engine} ${lang} ${layout.name}: Get started put away stays away, in the settings`, async (t) => {
+      test(`${engine} ${lang} ${layout.name}: panel dismissal keeps its preference; the window keeps all steps`, async (t) => {
         const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
         t.after(() => browser.close());
         const w = newWorld(), posts = [];
+        if (layout.name !== "panel") w.hidden = true;
         const first = await open(browser, layout, lang, w, posts);
         const page = first.page;
-        await page.locator("#agentsLead .guide").waitFor();
+        const card = cardFor(page, layout);
+        await card.waitFor();
+        if (layout.name !== "panel") {
+          assert.equal(await page.evaluate(() => view), "quickstart", "unconfigured launch opens guidance even after panel dismissal");
+          assert.equal(await card.locator(".guide-step").count(), 3);
+          assert.equal(await card.locator(".guide-x").count(), 0);
+          await page.locator('#nav [data-view="agents"]').click();
+          assert.equal(await page.locator("#agentsLead .guide").count(), 0);
+          // Focus refresh must not send the user back while configuring.
+          await page.evaluate(() => load(true));
+          assert.equal(await page.evaluate(() => view), "agents");
+          await page.reload();
+          await card.waitFor();
+          assert.equal(await page.evaluate(() => view), "quickstart", "each unconfigured launch returns to guidance");
+          assert.equal(posts.includes("/api/settings/guide"), false, "reading the guide writes no setting");
+          // Explicit navigation (an import or a tray link) keeps its target.
+          await page.goto("http://magpie.test/?view=agents");
+          await page.waitForFunction(() => load.done);
+          await page.locator(".row.agent").first().waitFor();
+          assert.equal(await page.evaluate(() => view), "agents");
+          // A connected agent does not finish setup after all models are
+          // deselected: step 2 is required on the next normal launch too.
+          w.provider = true;
+          w.wired = true;
+          await page.goto("http://magpie.test/");
+          await card.locator('[data-step="source"].done').waitFor();
+          assert.equal(await page.evaluate(() => view), "quickstart");
+          assert.equal(await stepDone(page, "models"), false);
+          assert.equal(await stepDone(page, "agent"), true);
+          assert.equal(await card.locator(".guide-n").textContent(), await page.evaluate(() => t("{n} of {m} done", { n: 2, m: 3 })));
+          assert.deepEqual(page.errors, []);
+          return;
+        }
         const top = await tops(page);
         await page.locator(".guide-x").click();
         await page.locator(".guide").waitFor({ state: "detached" });

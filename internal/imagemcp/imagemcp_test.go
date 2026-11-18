@@ -39,7 +39,7 @@ func (g *gw) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	g.mu.Lock()
 	g.path, g.body, g.ua = append(g.path, r.URL.Path), append(g.body, string(b)), append(g.ua, r.Header.Get("User-Agent"))
 	g.mu.Unlock()
-	if r.Header.Get("Authorization") != "Bearer magpie" {
+	if r.Header.Get("Authorization") != "Bearer "+gateway.Token {
 		w.WriteHeader(401)
 		return
 	}
@@ -202,6 +202,41 @@ func TestGatewayRefusalIsAToolError(t *testing.T) {
 	_, err := s.generate(json.RawMessage(`{"prompt":"x"}`), nil, caller{agent: s.agent})
 	if err == nil || !strings.Contains(err.Error(), "Image generation") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestGenerateForwardsExplicitModel(t *testing.T) {
+	g := &gw{}
+	project := t.TempDir()
+	c := start(t, g, project)
+	c.call("initialize", map[string]any{"capabilities": map[string]any{"roots": map[string]any{}}})
+	tools := c.call("tools/list", map[string]any{})
+	first := tools["tools"].([]any)[0].(map[string]any)
+	props := first["inputSchema"].(map[string]any)["properties"].(map[string]any)
+	if props["model"] == nil {
+		t.Fatalf("image tool does not advertise model: %v", props)
+	}
+	for _, edit := range []bool{false, true} {
+		args := map[string]any{"prompt": "a city", "model": "jellytoken/gpt-image-2", "size": "1536x1024"}
+		if edit {
+			args["reference_images"] = []string{"data:image/png;base64," + base64.StdEncoding.EncodeToString(png)}
+		}
+		res := c.call("tools/call", map[string]any{"name": tool, "arguments": args})
+		if res["isError"] == true {
+			t.Fatalf("edit=%v: %v", edit, res)
+		}
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if len(g.body) != 2 || g.path[0] != "/v1/images/generations" || g.path[1] != "/v1/images/edits" {
+		t.Fatalf("requests: %v", g.path)
+	}
+	for _, raw := range g.body {
+		var body map[string]any
+		json.Unmarshal([]byte(raw), &body)
+		if body["model"] != "jellytoken/gpt-image-2" || body["size"] != "1536x1024" {
+			t.Fatalf("explicit model and size lost: %s", raw)
+		}
 	}
 }
 

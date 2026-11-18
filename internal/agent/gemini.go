@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"github.com/yetone/magpie/internal/product"
 	"path/filepath"
 	"strings"
 
@@ -245,7 +246,7 @@ func geminiIn(at place) *Agent {
 					case "custom":
 						out = append(out, Option{Value: "custom", Note: hostOf(base()) + " (from .env)"})
 					case magpieID:
-						out = append(out, Option{Value: magpieID, Label: "magpie", Note: "the local gateway · every provider's models"})
+						out = append(out, Option{Value: magpieID, Label: product.Name, Note: "the local gateway · every provider's models"})
 					}
 					return out
 				},

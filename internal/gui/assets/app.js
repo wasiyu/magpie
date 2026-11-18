@@ -500,6 +500,7 @@ function renderAgents() {
   const list = $("#agents");
   list.replaceChildren();
   homeAgentPrefRows(); // an opened row's, back in the page (ysm119)
+  renderQuickstart();
   agentsLead(list);
   self.gatewaySkewLine?.(list);
   if (!state.agents.length) {
@@ -583,7 +584,7 @@ function renderAgents() {
       // in words like the rest, the row itself the link (or the command)
       const act = a.import ? importButton(a) : launchSolo(a);
       sum = el("span", "ag-sum");
-      sum.append(a.import ? el("span", "v" + (a.added ? "" : " empty"), a.added ? "magpie" : t("Add magpie")) : el("span", "v empty", t("Copy launch command")), el("span"));
+      sum.append(a.import ? el("span", "v" + (a.added ? "" : " empty"), a.added ? t("magpie") : t("Add magpie")) : el("span", "v empty", t("Copy launch command")), el("span"));
       const c = el("span", "chev");
       c.append(a.import ? svg(OUT, 10, 1.6) : svg(LAUNCH_GLYPH, 10, 1.5));
       sum.append(c);
@@ -1712,15 +1713,15 @@ function agentsLead(list) {
     list.before(lead);
   }
   lead.replaceChildren();
-  // a new user's first view: the Get started card in the welcome's place,
-  // in the panel as in the window
-  const g = guideShown();
-  lead.classList.toggle("guiding", !!g);
-  if (g) {
-    lead.hidden = false;
-    lead.classList.remove("welcome");
-    lead.append(guideCard(g));
-    return;
+  lead.classList.remove("guiding");
+  if (mode === "panel") {
+    const g = guideShown();
+    if (g) {
+      lead.hidden = false;
+      lead.classList.add("guiding");
+      lead.append(guideCard(g));
+      return;
+    }
   }
   const kinds = mode === "panel" ? [] : state.agents.map(connectKind);
   lead.hidden = !kinds.some((k) => k === "ok" || k === "empty");
@@ -1729,7 +1730,7 @@ function agentsLead(list) {
   lead.classList.toggle("welcome", first);
   if (!first) {
     const [pre, post] = t("Switch an agent on and the models you set up in magpie show up as the {magpie} provider in its own model list; or pick its model right here.").split("{magpie}");
-    lead.append(pre, el("b", "", "magpie"), post || "");
+    lead.append(pre, el("b", "", t("magpie")), post || "");
     return;
   }
   lead.append(el("b", "ag-lead-h", t("Let your agents use the models you set up in magpie")));
@@ -1742,39 +1743,59 @@ function agentsLead(list) {
   }
 }
 
-// ---------- Get started (wangye1644294 on X): three steps, each ticked from what is so ----------
+// ---------- Get started (wangye1644294 on X) ----------
+// The window's Get started page keeps all three steps, with ticks from the
+// current providers, selected models and connected agents. The compact panel's
+// card still goes once setup is complete or the user puts it away.
 
-// the templates offered as a starter, most harmless first: each behind
-// the other changes no model the agent asked for until one fails
-const GUIDE_TEMPLATES = ["steady", "thrifty", "smart"];
-const GUIDE_TEMPLATE_NAMES = { smart: "Hard to strong, easy to cheap", thrifty: "Cheap first", steady: "Never stuck" };
-const GUIDE_TEMPLATE_SAYS = {
-  smart: "A hard task goes to the strongest model, an easy one and compaction to a cheap one",
-  thrifty: "A cheap model first; the strongest for high reasoning, or when the cheap ones fail",
-  steady: "The strongest model of each provider, each behind the other: one down doesn't stop the agent",
-};
 const GUIDE_X = "M4.5 4.5l7 7M11.5 4.5l-7 7";
 const GUIDE_CHIPS = 6; // agents named on the card; the rest are in the list under it
-// guideGroups: /api/groups as the card last read it, and for which served
-// count, read again when the models change or a group is added
-let guideGroups = null, guideGroupsFor = null, guideGroupsBusy = false;
-let guideBusy = ""; // what the card is doing: "hide", "template", an agent's id
+let guideBusy = ""; // what the card is doing: "hide", an agent's id
+let guideRead = null;
 
-// guideShown: the steps' state when the card is to be shown, else null
-function guideShown() {
-  if (gatewayMode || !state || state.settings?.guideHidden) return null;
-  const source = (state.served || 0) > 0 || anyMagpieModels();
+function guideProgress() {
+  if (!state) return null;
+  const ready = (providers || providersEarly?.got)?.providers?.filter((p) => p.ready && !p.off && !p.account?.signedOut) || [];
+  const source = ready.length > 0;
+  const models = source && (state.served || 0) > 0;
   const agent = state.agents.some((a) => a.wired);
-  if (source && agent) return null;
-  const own = guideGroups?.groups?.filter((x) => !x.auto) || [];
-  return { source, agent, routing: own.length > 0, own };
+  return { source, models, agent, ready, unknown: !!guideRead?.error };
+}
+
+async function refreshQuickstart(freshState) {
+  const read = guideRead = { pending: true }, before = state, list = providers;
+  renderQuickstart();
+  try {
+    const [s, p] = await Promise.all([freshState || api("state"), api("providers")]);
+    if (guideRead !== read || view !== "quickstart" || state !== before || providers !== list) return;
+    state = s; providers = p;
+    applyPrefs(state.settings, state.fx);
+    renderSideGw(p.gateway);
+    renderAgents();
+  } catch {
+    if (guideRead === read && state === before && providers === list) read.error = true;
+  } finally {
+    if (guideRead === read) { read.pending = false; renderQuickstart(); }
+  }
+}
+
+// The panel's optional card has a separate visibility preference. It never
+// removes steps from the window's permanent Get started page.
+function guideShown() {
+  if (gatewayMode || state?.settings?.guideHidden) return null;
+  prefetchProviders();
+  const g = guideProgress();
+  return g && !(g.source && g.models && g.agent) ? g : null;
 }
 
 function guideStep(n, done, title, say) {
   const li = el("li", "guide-step" + (done ? " done" : ""));
   const tick = el("span", "guide-tick");
   tick.setAttribute("aria-hidden", "true");
-  if (done) tick.append(svg(CHECK, 12, 2));
+  if (window.jellytoolGuide) {
+    tick.append(el("span", "guide-number", String(n)));
+    if (done) tick.append(el("span", "guide-done-mark"));
+  } else if (done) tick.append(svg(CHECK, 12, 2));
   else tick.textContent = String(n);
   const body = el("div", "guide-body");
   const h = el("b", "guide-title", title);
@@ -1785,117 +1806,121 @@ function guideStep(n, done, title, say) {
   return { li, body };
 }
 
-function guideCard(g) {
+function guideCard(g, persistent = false) {
   const card = el("section", "guide");
   card.setAttribute("aria-label", t("Get started"));
   const head = el("div", "guide-head");
-  const steps = [g.source, g.agent];
-  head.append(el("b", "guide-h", t("Get started")), el("span", "guide-n", t("{n} of {m} done", { n: steps.filter(Boolean).length, m: steps.length })));
-  const x = el("button", "guide-x");
-  x.type = "button";
-  x.title = t("Hide Get started");
-  x.setAttribute("aria-label", x.title);
-  x.append(svg(GUIDE_X, 12, 1.6));
-  x.disabled = guideBusy === "hide";
-  x.onclick = (e) => { e.stopPropagation(); hideGuide(); };
-  head.append(x);
+  const steps = [g.source, g.models, g.agent];
+  head.append(el("b", "guide-h", t("Get started")), el("span", "guide-n", g.unknown ? "" : t("{n} of {m} done", { n: steps.filter(Boolean).length, m: steps.length })));
+  if (!persistent) {
+    const x = el("button", "guide-x");
+    x.type = "button";
+    x.title = t("Hide Get started");
+    x.setAttribute("aria-label", x.title);
+    x.append(svg(GUIDE_X, 12, 1.6));
+    x.disabled = guideBusy === "hide";
+    x.onclick = (e) => { e.stopPropagation(); hideGuide(); };
+    head.append(x);
+  }
   card.append(head);
   const list = el("ol", "guide-steps");
 
-  // 1: a model source
-  const one = guideStep(1, g.source, t("Add a model source"),
-    g.source ? t("{n} models ready to use", { n: state.served || 0 }) : t("A subscription you already pay for, a provider, or an API key"));
+  // 1: a provider with credentials, independently of its model selection
+  const one = guideStep(1, g.source && !g.unknown, t("Connect a provider"),
+    g.ready.length ? g.ready.map((p) => p.name).join(", ") : t("A subscription you already pay for, a provider, or an API key"));
   one.li.dataset.step = "source";
-  if (!g.source) {
-    const add = el("button", "text primary guide-go", t("Add a provider"));
+  if (window.jellytoolGuide) {
+    one.body.append(window.jellytoolGuide(g));
+  } else if (persistent || !g.source) {
+    const add = el("button", "text primary guide-go", t(g.source ? "Open Providers" : "Add a provider"));
     add.type = "button";
     add.onclick = (e) => {
       e.stopPropagation();
-      if (mode === "window") addProviderFromAgents();
+      if (mode === "window") g.source ? show("providers") : addProviderFromAgents();
       else api("window/main?view=providers", {}).catch(statusErr);
     };
     one.body.append(add);
   }
   list.append(one.li);
 
-  // 2: an agent, those found here named, each connected in a click
+  // 2: choose the models the provider shares with agents
+  const two = guideStep(2, g.models && !g.unknown, t("Model selection"),
+    g.models ? t("{n} models selected", { n: state.served }) : t("Open a provider, choose the models to share, then Save."));
+  two.li.dataset.step = "models";
+  const choose = el("button", "text primary guide-go", t("Choose models"));
+  choose.type = "button";
+  choose.onclick = () => {
+    if (window.jellytoolModels) window.jellytoolModels();
+    else if (mode !== "window") api("window/main?view=providers", {}).catch((err) => status(err.message, "err"));
+    else if (!g.source) addProviderFromAgents();
+    else if (g.ready.length === 1) openProvider(g.ready[0].id);
+    else show("providers");
+  };
+  two.body.append(choose);
+  list.append(two.li);
+
+  // 3: an agent, those found here named, each connected in a click
   const found = state.agents.filter((a) => connectKind(a) === "ok" || connectKind(a) === "empty");
-  const two = guideStep(2, g.agent, t("Connect an agent"),
-    g.agent ? "" : found.length ? t("magpie found these on this computer. Click one to connect it:") : t("Install Claude Code, Codex, Gemini CLI, OpenCode… and magpie will list them here."));
-  two.li.dataset.step = "agent";
-  if (!g.agent && found.length) {
+  const three = guideStep(3, g.agent && !g.unknown, t("Connect an agent"),
+    g.agent ? state.agents.filter((a) => a.wired).map((a) => a.name).join(", ") : found.length ? t("magpie found these on this computer. Click one to connect it:") : t("Install Claude Code, Codex, Gemini CLI, OpenCode… and magpie will list them here."));
+  three.li.dataset.step = "agent";
+  if (found.length) {
     const chips = el("div", "guide-agents");
-    for (const a of found.slice(0, GUIDE_CHIPS)) {
+    for (const a of found) {
       const b = el("button", "guide-agent");
       b.type = "button";
       b.dataset.id = a.id;
       b.append(icon(a.icon), el("span", "", a.name));
       const ready = connectKind(a) === "ok";
+      const connected = !!a.wired;
       b.disabled = !ready || !!guideBusy;
+      b.classList.toggle("connected", connected);
       b.classList.toggle("busy", guideBusy === a.id);
-      b.title = ready ? t("Switch on and {agent}'s model list gets magpie's models", { agent: a.name }) : t("Add a key or a subscription first; then there are models to connect");
-      b.onclick = (e) => { e.stopPropagation(); guideConnect(a, e); };
+      b.title = connected ? t("Connected · switch off to put back what {agent} had before magpie", { agent: a.name }) : ready ? t("Switch on and {agent}'s model list gets magpie's models", { agent: a.name }) : t("Add a key or a subscription first; then there are models to connect");
+      b.onclick = (e) => { e.stopPropagation(); connected ? askDisconnect(a) : guideConnect(a, e); };
       chips.append(b);
     }
-    if (found.length > GUIDE_CHIPS) chips.append(el("span", "guide-more", t("+{n} more below", { n: found.length - GUIDE_CHIPS })));
-    two.body.append(chips);
+    three.body.append(chips);
   }
-  list.append(two.li);
-
-  // 3, optional: a routing group of the user's own models
-  const three = guideStep(3, g.routing, t("Set up routing (optional)"),
-    g.routing ? g.own.map((x) => x.name || x.id).join(", ") : t("A routing group sends each request to the right model, and to the next one when a model fails"));
-  three.li.dataset.step = "routing";
-  three.li.dataset.feature = "routing groups";
-  three.li.classList.add("optional");
-  if (!g.routing && g.source) {
-    guideLoadGroups();
-    const acts = el("div", "guide-acts");
-    const tp = GUIDE_TEMPLATES.map((k) => guideGroups?.templates?.find((x) => x.kind === k && !x.need && x.group?.members?.length)).find(Boolean);
-    if (tp) {
-      const name = t(GUIDE_TEMPLATE_NAMES[tp.kind] || tp.group.name);
-      const add = el("button", "text primary guide-go guide-tpl", t("Add “{name}”", { name }));
-      add.type = "button";
-      add.dataset.kind = tp.kind;
-      add.title = t(GUIDE_TEMPLATE_SAYS[tp.kind] || "") + "\n" + tp.group.members.join(" → ");
-      add.disabled = !!guideBusy;
-      add.onclick = (e) => { e.stopPropagation(); guideTemplate(tp, name); };
-      acts.append(add);
-    }
-    const open = el("button", "text guide-open", t("Open routing groups"));
+  if (persistent) {
+    const open = el("button", "text guide-open", t("Open Agents"));
     open.type = "button";
-    open.dataset.feature = "routing";
-    open.onclick = (e) => {
-      e.stopPropagation();
-      if (mode === "window") show("groups");
-      else api("window/main?view=groups", {}).catch(statusErr);
-    };
-    acts.append(open);
-    three.body.append(acts);
-    if (tp) three.body.append(el("span", "guide-say guide-tpl-say", t(GUIDE_TEMPLATE_SAYS[tp.kind] || "")));
+    open.onclick = () => show("agents");
+    three.body.append(open);
   }
   list.append(three.li);
   card.append(list);
   return card;
 }
 
-// guideLoadGroups reads the groups and templates for step 3, once for
-// each count of models served, and draws the card again with them
-function guideLoadGroups(again) {
-  const key = String(state.served || 0);
-  if (guideGroupsBusy || (!again && guideGroupsFor === key)) return;
-  guideGroupsBusy = true;
-  guideGroupsFor = key;
-  api("groups").then((gs) => { guideGroups = gs; }, () => { /* the step links to Routing still */ })
-    .finally(() => { guideGroupsBusy = false; if (view === "agents" || mode === "panel") guideRedraw(); });
-}
-
-// guideRedraw draws the lead again, and the panel to its height
 function guideRedraw() {
   const list = $("#agents");
   if (!list || !state) return;
+  renderQuickstart();
   agentsLead(list);
   fit();
+}
+
+function renderQuickstart() {
+  const page = $("#quickstart");
+  if (!page || mode !== "window" || !state) return;
+  const g = guideProgress();
+  if (!window.jellytoolKeepQuickstart?.(page, g)) {
+    const focused = page.contains(document.activeElement) ? document.activeElement : null;
+    page.replaceChildren(guideCard(g, true));
+    window.jellytoolQuickstart?.(page, g, focused);
+  }
+  page.setAttribute("aria-busy", String(!!guideRead?.pending));
+  page.querySelector(".guide-check")?.remove();
+  if (guideRead?.pending || g.unknown) {
+    const note = el("div", "guide-say guide-check", t(g.unknown ? "Could not read your setup. Try again." : "Checking your setup…"));
+    note.setAttribute("role", g.unknown ? "alert" : "status");
+    if (g.unknown) {
+      const retry = el("button", "text", t("Try again"));
+      retry.onclick = () => refreshQuickstart(); note.append(retry);
+    }
+    page.prepend(note);
+  }
 }
 
 async function guideConnect(a, ev) {
@@ -1919,24 +1944,6 @@ async function guideConnect(a, ev) {
       openAgentModels(a, chip, ev);
       return;
     }
-    status(t(err.message), "err");
-  }
-}
-
-async function guideTemplate(tp, name) {
-  if (guideBusy) return;
-  guideBusy = "template";
-  guideRedraw();
-  try {
-    guideGroups = await api("groups/template", { kind: tp.kind, name });
-    guideBusy = "";
-    status(t("Added {name}", { name }), "ok");
-    // the agents' pickers list the new group
-    state = await api("state");
-    renderAgents();
-  } catch (err) {
-    guideBusy = "";
-    guideRedraw();
     status(t(err.message), "err");
   }
 }
@@ -2898,7 +2905,7 @@ function importButton(a) {
   b.title = a.added
     ? t("{name} has magpie as a provider · click to add it again", { name: a.name })
     : t("Opens {name} to add magpie as a provider — confirm it there", { name: a.name });
-  b.append(icon("magpie"), el("span", "v" + (a.added ? "" : " empty"), a.added ? "magpie" : t("Add magpie")));
+  b.append(icon("magpie"), el("span", "v" + (a.added ? "" : " empty"), a.added ? t("magpie") : t("Add magpie")));
   b.append(el("span", "chev", svg(OUT, 11, 1.6)));
   b.onclick = (ev) => {
     ev.stopPropagation();
@@ -2952,7 +2959,9 @@ function arrangeAgents() {
   // agents found here, each connected in a click, and the whole list is
   // folded under it until one is, a step at a time rather than every agent
   // at once (Renzexi01 on X: 一进来就这么复杂)
-  const guiding = !anyUsed && !!guideShown();
+  // The window's guide is a page of its own (quickstart); only the panel
+  // shows the card above its list.
+  const guiding = mode === "panel" && !anyUsed && !!guideShown();
   // what is set on it alone decides where one not hidden goes: pinned in view
   // by hand, one cleared stayed up among the set ones with nothing to say why
   const inView = (a) => !guiding && !hidden.has(a.id) && (!anyUsed || agentUsed(a));
@@ -4384,6 +4393,13 @@ async function load(again) {
     tintTitleBar();
     renderAgents();
     readLoads(true);
+    if (view === "quickstart") await refreshQuickstart(state);
+    if (mode === "window" && !load.quickStarted) {
+      load.quickStarted = true;
+      if (state.served > 0 && !providers && !providersEarly?.got && view !== "quickstart") { prefetchProviders(); await providersEarly?.read.catch(() => {}); }
+      const g = guideProgress();
+      if (!gatewayMode && !params.get("view") && !(g.source && g.models && g.agent)) await show("quickstart");
+    }
     redrawSuffix();
     redrawNoNames();
     // Update all's outcome stays until the agents are read again
@@ -4392,7 +4408,7 @@ async function load(again) {
     loadCLIs(); // after the rows, never holding them up
     loadInstalls();
     // the Providers page made ready behind the one shown (#1519)
-    if (mode !== "panel" && !(view === "providers" || providersPage(view))) prefetchProviders();
+    if (mode !== "panel" && !(view === "quickstart" || view === "providers" || providersPage(view))) prefetchProviders();
     if (mode === "panel") { renderPanelQuota(true); if (!early) panelQuotasNow(again); panelAccounts(); }
     // an open provider editor is someone typing: coming back to the window
     // must not rebuild it under them
@@ -4458,11 +4474,8 @@ for (const k of "pointerdown keydown input wheel".split(" ")) addEventListener(k
   api("update/using", { open }).catch(() => {});
 }, true);
 
-// renderUpdateBadge shows the header's Update pill once a newer magpie is
-// downloaded or out; Settings or its × keeps it away (u.quiet: the × holds
-// for 3 days, not only until the next release, minutes later; an urgent
-// release lights it through that).
-
+// The shared update button opens a download page in Jellytool; magpie can
+// download and restart. Visibility follows the existing per-version preference.
 async function renderUpdateBadge() {
   const b = $("#update"), label = b.querySelector("span");
   const u = await api(updatePath("update")).catch(() => null);
@@ -4532,7 +4545,7 @@ async function renderUpdateBadge() {
     return;
   }
   // a swap that failed says so where it was clicked, not only in the tooltip
-  label.textContent = u.state === "ready" && u.error ? t("Update failed") : t("Update");
+  label.textContent = u.manual ? t("Download update") : u.state === "ready" && u.error ? t("Update failed") : t("Update");
   b.title = u.state === "ready" ? t("Restart to update to {v}", { v: u.latest })
     : u.state === "error" ? t("Couldn't download {v}", { v: u.latest }) + " · " + t("Click to try again")
     : u.state === "found" ? t("{v} is out", { v: u.latest }) + (u.size ? " · " + t("{done} MB", { done: (u.size / 1e6).toFixed(1) }) : "") + " · " + t("Click to download and restart")
@@ -4540,6 +4553,7 @@ async function renderUpdateBadge() {
     : t("{v} is out", { v: u.latest });
   if (u.error) b.title += "\n" + u.error;
   b.onclick = () => {
+    if (u.manual) return confirmUpdate(u, () => api("update/install", {}).catch((e) => status(e.message, "err")));
     // what changed is shown first, and a click there restarts (#844); one
     // that failed restarts again at once
     if (u.state === "ready") return u.error ? restart() : confirmUpdate(u, restart, b);
@@ -4655,6 +4669,7 @@ function cliBehindOnce() {
 let configBlockedAsked = false;
 const configBlockedAsk = (p) => mode !== "panel" && p && import("./cfgblocked.js").then(() => window.cfgBlockedAsk(p));
 async function whatsNewOnce() {
+  if (window.bootPrefs?.jellytool) return;
   if (whatsNewAsked || mode === "panel" || document.hidden || !$("#modal").hidden) return;
   whatsNewAsked = true;
   const w = await api(updatePath("whatsnew")).catch(() => null);
@@ -5991,6 +6006,7 @@ function prefetchProviders() {
   e.read.then((s) => {
     e.got = s;
     markNewPartners();
+    if (view === "quickstart" || mode === "panel") guideRedraw();
     if (state?.agents?.some((a) => !a.wired && (a.id === "claude" || a.id === "codex"))) renderAgents();
   }, () => { if (providersEarly === e) providersEarly = null; });
 }
@@ -6314,6 +6330,7 @@ function renderProviders(quiet) {
   renderMovable();
   renderProviderDiscovery();
   dialog = renderAdd() || dialog;
+  dialog = window.jellytoolPendingConnection?.() || dialog;
   if (importing) dialog = renderImport(importing);
   if (importingApps) dialog = renderImportApps(importingApps);
   keptIcons = null;
@@ -7795,7 +7812,10 @@ function reEdit(x) { editing = x; draft = null; renderProviders(); }
 // true when the open provider draft has nothing to lose, or the reader lets it go
 const leaveDraft = async () => !providerDirty() || await confirmDiscard();
 async function cancelEdit(keep) {
+  const handled = window.jellytoolCancelModels ? await window.jellytoolCancelModels() : null;
+  if (handled != null) return handled;
   if ((providerDirty() || ((importing || importingApps) && modalFormDirty())) && !(await confirmDiscard())) return false;
+  window.jellytoolCancelConnection?.();
   if (keep !== true) dropSigningIn(editing);
   editing = null; draft = null; acctModels = null; importing = null; importingApps = null; renderProviders();
   return true;
@@ -9266,17 +9286,23 @@ function closeModal() {
     m.classList.remove("held");
     d.style.top = d.style.maxHeight = "";
     m.classList.remove("out");
+    // Closing may finish after the reader has already moved into another
+    // field or page control. Their new focus takes precedence over ours.
+    const active = document.activeElement;
+    const restoreFocus = !active || active === document.body || m.contains(active);
     d.replaceChildren();
     modalFormBase = "";
-    if (modalReturnFocus?.isConnected && !modalReturnFocus.closest("[hidden]")) modalReturnFocus.focus(NO_SCROLL);
-    else if (!$("#view-" + view).hidden) $("#view-" + view).focus(NO_SCROLL);
+    if (restoreFocus) {
+      if (modalReturnFocus?.isConnected && !modalReturnFocus.closest("[hidden]")) modalReturnFocus.focus(NO_SCROLL);
+      else if (!$("#view-" + view).hidden) $("#view-" + view).focus(NO_SCROLL);
+    }
     modalReturnFocus = null;
     for (const a of [...m.getAnimations(), ...d.getAnimations()]) a.cancel();
     d.style.opacity = d.style.transform = d.style.clipPath = "";
     unveil(m);
     // an editor opened from the add sheet gives the focus back to its option
     const sheet = $("#addSheet");
-    if (adding && !sheet.hidden && !$("#view-providers").hidden) {
+    if (restoreFocus && adding && !sheet.hidden && !$("#view-providers").hidden) {
       const option = addReturnPick && sheet.querySelector(`[data-pick="${CSS.escape(addReturnPick)}"]`);
       (option || sheet.querySelector(".find"))?.focus(NO_SCROLL);
     }
@@ -9474,7 +9500,7 @@ function renderEditor(p, presetID) {
   const kept = keptIcons;
   keptIcons = null;
   try {
-    const editor = drawEditor(p, presetID);
+    const editor = window.jellytoolProviderEditor?.(p) || drawEditor(p, presetID);
     if (draft && draft !== providerDraftRef) {
       providerDraftRef = draft;
       providerDraftBase = providerDraftValue();
@@ -9737,7 +9763,8 @@ function drawEditor(p, presetID) {
 
   if (p?.account) {
     const a = p.account;
-    if (subOf(a.agent)) {
+    if (window.jellytoolConnection && p.id === "jellytoken") ed.append(...window.jellytoolConnection(p));
+    else if (subOf(a.agent)) {
       if (a.agent === "claude" && !p.switchOnly) ed.append(claudeModeRow());
       // switched connected or not (Greatrobbort on X)
       const via = a.wsl ? t("Runs through WSL · {distro}: Claude Code there signs in and answers; Windows has none of its own.", { distro: a.wsl }) + " " : "", alone = /^c(laude|odex)$/.test(a.agent) ? " " + t("Just want accounts switched? {agent} needn't be connected to magpie.", { agent: a.agentName }) : "";
@@ -9750,7 +9777,7 @@ function drawEditor(p, presetID) {
       acct.append(icon(a.agentIcon), el("span", "n", a.user), hideAccounts.eye(a.user, p.id), planChip(accountPlan(a)));
       ed.append(...field(t("Account"), acct, t("{agent}'s sign-in, read from its own files. Sign out there and this provider goes away.", { agent: a.agentName })));
     }
-    ed.append(...field(t("Models"), renderModels(p), pluginFilterNote(subOf(a.agent))));
+    ed.append(...field(t("Models"), window.jellytoolModelsEditor?.(p) || renderModels(p), pluginFilterNote(subOf(a.agent))));
     if (p.drawIds?.length) ed.append(...renderDrawers(p));
     if (p.filmIds?.length) ed.append(...renderVideomakers(p));
     // the subscription's own warm-up, check-in and resets first
@@ -10277,7 +10304,7 @@ function drawEditor(p, presetID) {
     ed.append(...field(t(pr.regionLabel || "Region"), seg, t(pr.splitAccounts ? "pick the region of your {p} account" : "which endpoint {p} is reached through", { p: pr.name })));
   }
 
-  if (p) ed.append(...field(t("Models"), renderModels(p), ""));
+  if (p) ed.append(...field(t("Models"), window.jellytoolModelsEditor?.(p) || renderModels(p), ""));
   // Azure's models are its deployments, listed with the key (#1995)
   else if (pr?.id === "azure") ed.append(...field(t("Models"), el("div", "hint azure-models", t("No need to type them: once added, magpie lists the deployments this key can call. Type a deployment's name as a model id only if that list can't be fetched.")), ""));
   if (p?.drawIds?.length) ed.append(...renderDrawers(p));
@@ -11478,7 +11505,7 @@ function emptyModelsHint(p) {
 // routing gives way to the next member at once, and the last one's wait
 // can end in the queue's 503 (@sufeng1894 on X)
 const queuedSaid = (x) => t("Queued at its vendor, not answered: {queue}", { queue: x.queued });
-function renderModels(p) {
+function renderModels(p, selectionOnly = false) {
   // a chip's dot: how its model answered, when it has been asked
   const tested = (c, id) => {
     const got = modelTests[p.id];
@@ -11668,7 +11695,7 @@ function renderModels(p) {
       const kb = !draft.unlisted && (on || served.has(m.id)) ? p.keptBy?.[m.id] || [] : [];
       if (kb.length) c.title = (c.title || m.id) + "\n" + t("Kept out of agents' lists by {groups}, a routing group listed alone", { groups: kb.join(", ") });
       tested(c, m.id);
-      menu(c, m.id);
+      if (!selectionOnly) menu(c, m.id);
       // a click picks it (#681); the last unpicked leaves none (#1831)
       c.onclick = () => {
         draft.chosen = on ? draft.chosen.filter((x) => x !== m.id) : [...draft.chosen, m.id];
@@ -11685,7 +11712,7 @@ function renderModels(p) {
       c.append(el("span", "", id));
       c.title = t("Added by hand");
       tested(c, id);
-      menu(c, id);
+      if (!selectionOnly) menu(c, id);
       c.onclick = () => { draft.chosen = draft.chosen.filter((x) => x !== id); draft.none = true; draw(); };
       chips.append(c);
     }
@@ -12208,12 +12235,13 @@ function renderModels(p) {
     workOn.title = bad ? t("Unpick the models whose last test failed; those that answered, and those not tested, stay picked")
       : t("Every picked model that was tested answered");
   };
-  if (!decideOnly(p)) { box.append(serves); queueMicrotask(drawServes); }
+  if (!selectionOnly && !decideOnly(p)) { box.append(serves); queueMicrotask(drawServes); }
   if (q || p.models.length > 1) {
     if (q) { q.oninput = draw; bulk.prepend(q); }
     box.append(bulk);
   }
-  box.append(chips, fold, names);
+  box.append(chips, fold);
+  if (!selectionOnly) box.append(names);
   const foot = el("div", "mfoot");
   // a model the list leaves out, added by its id (Tom on X)
   const add = input(draft.typed || "", t("add a model id…"));
@@ -12305,7 +12333,7 @@ function renderModels(p) {
     };
     foot.append(forget);
   }
-  box.append(foot);
+  if (!selectionOnly) box.append(foot);
   // a plugin whose list failed shows its defaults (Cursor's Auto alone):
   // why, rather than a short list that looks like the account's
   if (p.listError) box.append(el("div", "hint model-hint warn list-error", t("{p} couldn't list its models: {error}", { p: p.name, error: p.listError })));
@@ -12315,7 +12343,7 @@ function renderModels(p) {
   tk.title = t("Its models leave the list agents pick from; the routing groups they are in still use them");
   // with routing groups switched off, only while it is ticked: then it is in use
   if (!draft.unlisted) tk.dataset.feature = "groups";
-  if (!decideOnly(p)) box.append(tk);
+  if (!selectionOnly && !decideOnly(p)) box.append(tk);
   // the vendor's list never asked for (axelburks on Discord: Ark's names
   // models by ids that can't be asked for): only the ids added are served
   if (p.takesListOff) {
@@ -12329,7 +12357,9 @@ function renderModels(p) {
   const lost = el("div", "hint model-hint warn");
   const hid = el("div", "hint model-hint agent-hides");
   box.append(why, lost, hid);
+  draft.jellyModelsRedraw = draw;
   draw();
+  draft.jellyRecommendationRedraw?.();
   return box;
 }
 
@@ -12883,6 +12913,7 @@ async function signedIn(st) {
 // startPluginSignIn: as OpenCode's `auth login`: way, questions, then the
 // browser (its code pasted back) or a key.
 async function startPluginSignIn(sub, method, inputs = {}, o = {}) {
+  if (sub.pid === "jellytoken" && window.jellytoolOpenConnection) return window.jellytoolOpenConnection();
   const ms = sub.plugin.methods || [];
   if (!ms.length) {
     signing = { agent: sub.agent, state: "failed", error: t("The plugin has no way to sign in to {name}", { name: sub.name }) };
@@ -15837,6 +15868,7 @@ async function providerAction(action, body, okMsg, base = "provider/") {
     "Its saved configuration will be removed. Agents using it may switch to another provider or their default model.")) return false;
   try {
     const was = editing;
+    if (action === "save" && body.id === "jellytoken") await window.jellytoolBeforeSave?.(draft);
     providers = await api(base + action, body);
     dropSigningIn(was); // saved or removed, the editor takes its sign-in with it
     editing = null;
@@ -20273,7 +20305,7 @@ function renderSettings() {
   renderUpdate(row(t("Version"), "", s.version));
   // what changed in this version, and in one waiting; a build from source
   // has no notes
-  if (/^v?\d+\.\d+\.\d+$/.test(s.version || "")) {
+  if (!window.bootPrefs?.jellytool && /^v?\d+\.\d+\.\d+$/.test(s.version || "")) {
     const notes = el("button", "text", t("Open"));
     notes.onclick = () => openWhatsNew(notes);
     row(t("What's new"), t("The release notes since the last update"), "", notes).classList.add("whatsnew-row");
@@ -20293,42 +20325,44 @@ function renderSettings() {
       pill.querySelector(".val").prepend(back);
     }, () => {});
   }
-  // whether magpie asks for a newer version by itself, and how often;
-  // off, only the version row's Check asks (#472)
-  row(t("Automatic updates"), t("Checks for a newer magpie by itself"),
+  // Both products share the automatic-check preference; the rest of the
+  // update settings are magpie's own, which installs itself.
+  row(t(window.bootPrefs?.jellytool ? "Check for updates automatically" : "Automatic updates"), t(window.bootPrefs?.jellytool ? "Checks for new versions. Download opens the browser; install the new version yourself." : "Checks for a newer magpie by itself"),
     "", segsOO(!s.noAutoUpdate, (v) => savePrefs({ ...keep, noAutoUpdate: !v }))).classList.add("update-auto-row");
-  // kept in place while off, dimmed, its height the same (a row or a line
-  // taken away would shorten the page under the click), for when they are
-  // turned on again
-  row(t("Update check interval"), s.noAutoUpdate ? t("While automatic updates are on") : t("How often magpie looks for a newer version"), "",
-    segs(UPDATE_EVERY.map((m) => [m, m < 60 ? t("{n} min", { n: m }) : t("{n} h", { n: m / 60 })]), s.updateEvery || 360,
-      (updateEvery) => savePrefs({ ...keep, updateEvery }))).classList.add("update-every-row", ...(s.noAutoUpdate ? ["off"] : []));
-  // which versions an update offers (ssharpcc on X): every one as it comes
-  // out; Daily, one a day that passed its tests (fishmagic80 on X); or
-  // Stable, one a week; urgent ones at once on both, chosen by the update
-  // feed. It holds for the version row's Check too, so it stays lit with
-  // automatic updates off.
-  const uc = ["stable", "daily"].includes(s.updateChannel) ? s.updateChannel : "every";
-  row(t("Update channel"), t(uc === "stable" ? "One version a week, out for three days first, and urgent fixes at once. What's new lists every change since yours"
-    : uc === "daily" ? "One version a day, the newest that passed its tests, and urgent fixes at once. What's new lists every change since yours" : "Every version as soon as it is out"), "",
-    segs([["every", t("Every version")], ["daily", t("Daily")], ["stable", t("Stable")]], uc,
-      (v) => savePrefs({ ...keep, updateChannel: v === "every" ? "" : v }))).classList.add("update-channel-row");
-  // whether a newer version found is downloaded at once, or only said to
-  // be out and downloaded on a click (#2296): a metered network or a
-  // proxy billed by traffic. It holds for the version row's Check too.
-  row(t("Download updates automatically"), s.noAutoDownload
-    ? t("Off: a newer version is only shown, with its size; it downloads when you click Download update. For metered networks and proxies billed by traffic")
-    : t("Downloads a newer version as soon as it is found. Turn off on a metered network or a proxy billed by traffic"), "",
-    segsOO(!s.noAutoDownload, (v) => savePrefs({ ...keep, noAutoDownload: !v }))).classList.add("update-download-row");
-  row(t("Restart automatically"), s.noAutoUpdate ? t("While automatic updates are on") : t("Once an update is downloaded, restarts into it without cutting off an agent's request"), "",
-    segsOO(s.autoRestart, (v) => savePrefs({ ...keep, autoRestart: v }))).classList.add("update-restart-row", ...(s.noAutoUpdate ? ["off"] : []));
-  const mr = row(t("Download source"), "", "");
-  // beside Download source, both where an update comes from (WeltAn_X on X)
-  const src = el("button", "sess-pick pref-pick");
-  Object.assign(src, { type: "button", id: "updateSourcePick" });
-  menuOpener(src);
-  row(t("Update source"), "", "", src).id = "updateSourceRow";
-  import("./updatesource.js").then(() => src.isConnected && (renderUpdateMirror(mr, s), updateSourcePick(s, keep)), statusErr);
+  if (!window.bootPrefs?.jellytool) {
+    // kept in place while off, dimmed, its height the same (a row or a line
+    // taken away would shorten the page under the click), for when they are
+    // turned on again
+    row(t("Update check interval"), s.noAutoUpdate ? t("While automatic updates are on") : t("How often magpie looks for a newer version"), "",
+      segs(UPDATE_EVERY.map((m) => [m, m < 60 ? t("{n} min", { n: m }) : t("{n} h", { n: m / 60 })]), s.updateEvery || 360,
+        (updateEvery) => savePrefs({ ...keep, updateEvery }))).classList.add("update-every-row", ...(s.noAutoUpdate ? ["off"] : []));
+    // which versions an update offers (ssharpcc on X): every one as it comes
+    // out; Daily, one a day that passed its tests (fishmagic80 on X); or
+    // Stable, one a week; urgent ones at once on both, chosen by the update
+    // feed. It holds for the version row's Check too, so it stays lit with
+    // automatic updates off.
+    const uc = ["stable", "daily"].includes(s.updateChannel) ? s.updateChannel : "every";
+    row(t("Update channel"), t(uc === "stable" ? "One version a week, out for three days first, and urgent fixes at once. What's new lists every change since yours"
+      : uc === "daily" ? "One version a day, the newest that passed its tests, and urgent fixes at once. What's new lists every change since yours" : "Every version as soon as it is out"), "",
+      segs([["every", t("Every version")], ["daily", t("Daily")], ["stable", t("Stable")]], uc,
+        (v) => savePrefs({ ...keep, updateChannel: v === "every" ? "" : v }))).classList.add("update-channel-row");
+    // whether a newer version found is downloaded at once, or only said to
+    // be out and downloaded on a click (#2296): a metered network or a
+    // proxy billed by traffic. It holds for the version row's Check too.
+    row(t("Download updates automatically"), s.noAutoDownload
+      ? t("Off: a newer version is only shown, with its size; it downloads when you click Download update. For metered networks and proxies billed by traffic")
+      : t("Downloads a newer version as soon as it is found. Turn off on a metered network or a proxy billed by traffic"), "",
+      segsOO(!s.noAutoDownload, (v) => savePrefs({ ...keep, noAutoDownload: !v }))).classList.add("update-download-row");
+    row(t("Restart automatically"), s.noAutoUpdate ? t("While automatic updates are on") : t("Once an update is downloaded, restarts into it without cutting off an agent's request"), "",
+      segsOO(s.autoRestart, (v) => savePrefs({ ...keep, autoRestart: v }))).classList.add("update-restart-row", ...(s.noAutoUpdate ? ["off"] : []));
+    const mr = row(t("Download source"), "", "");
+    // beside Download source, both where an update comes from (WeltAn_X on X)
+    const src = el("button", "sess-pick pref-pick");
+    Object.assign(src, { type: "button", id: "updateSourcePick" });
+    menuOpener(src);
+    row(t("Update source"), "", "", src).id = "updateSourceRow";
+    import("./updatesource.js").then(() => src.isConnected && (renderUpdateMirror(mr, s), updateSourcePick(s, keep)), statusErr);
+  }
   const open = el("button", "text", t("Open"));
   open.onclick = () => api("settings/reveal", {}).catch(statusErr);
   // portable (a data folder beside magpie, #508): everything is in there
@@ -20354,33 +20388,37 @@ function renderSettings() {
     row(who, t("MAGPIE_PUBLIC_URL: where other computers reach the gateway, with a gateway key"), s.publicURL, copyBtn(s.publicURL, who)).id = "publicURLRow";
   }
   const site = el("button", "text", t("Open"));
-  site.onclick = () => api("open", { url: "https://usemagpie.ai" }).catch(() => {});
-  row(t("Website"), t("downloads, docs and what's new"), "usemagpie.ai", site);
+  site.onclick = () => api("open", { url: window.bootPrefs?.jellytool ? "https://www.jellytoken.com/" : "https://usemagpie.ai" }).catch(() => {});
+  row(t("Website"), window.bootPrefs?.jellytool ? "Jellytoken" : t("downloads, docs and what's new"), window.bootPrefs?.jellytool ? "www.jellytoken.com" : "usemagpie.ai", site);
   const lic = el("button", "text", t("View"));
   lic.onclick = showNotices;
-  row(t("Open-source licenses"), t("the notices of the code and data magpie is built with"), "", lic);
-  const join = el("button", "discord");
-  join.innerHTML = DISCORD_SVG;
-  join.append(el("span", "", t("Join Discord")));
-  join.title = "discord.gg/vGSnD3ZKQF";
-  join.onclick = () => api("open", { url: "https://discord.gg/vGSnD3ZKQF" }).catch(() => {});
-  // issues and the code are on GitHub, for those who'd rather not use Discord
-  const repo = el("button", "github");
-  repo.innerHTML = GITHUB_SVG;
-  repo.append(el("span", "", "GitHub"));
-  repo.title = "github.com/yetone/magpie";
-  repo.onclick = () => api("open", { url: "https://github.com/yetone/magpie" }).catch(() => {});
-  row(t("Community"), t("questions, ideas and feedback, on Discord or GitHub"), "", join, repo);
-  // the facts that help a fix, copied (never put in the link), then the
-  // feedback post on X, to reply to there (River_WLan on X)
-  const report = el("button", "text", t("Open"));
-  report.onclick = async () => {
-    const f = await fetch("/api/feedback?surface=" + (web ? "browser" : "app")).then((r) => r.ok ? r.json() : null).catch(() => null);
-    if (!f) return status(t("Couldn't read the details to copy"), "err");
-    await copy(f.text, "", report, t("Details copied. Paste them in your reply"));
-    api("open", { url: f.url }).catch(statusErr);
-  };
-  row(t("Report a problem"), "", "", report);
+  row(t("Open-source licenses"), window.bootPrefs?.jellytool ? t("Based on {project}", { project: "magpie" }) : t("the notices of the code and data magpie is built with"), "", lic);
+  // Jellytool has its own channels: magpie's community and its problem
+  // reports on X stay out of it
+  if (!window.bootPrefs?.jellytool) {
+    const join = el("button", "discord");
+    join.innerHTML = DISCORD_SVG;
+    join.append(el("span", "", t("Join Discord")));
+    join.title = "discord.gg/vGSnD3ZKQF";
+    join.onclick = () => api("open", { url: "https://discord.gg/vGSnD3ZKQF" }).catch(() => {});
+    // issues and the code are on GitHub, for those who'd rather not use Discord
+    const repo = el("button", "github");
+    repo.innerHTML = GITHUB_SVG;
+    repo.append(el("span", "", "GitHub"));
+    repo.title = "github.com/yetone/magpie";
+    repo.onclick = () => api("open", { url: "https://github.com/yetone/magpie" }).catch(() => {});
+    row(t("Community"), t("questions, ideas and feedback, on Discord or GitHub"), "", join, repo);
+    // the facts that help a fix, copied (never put in the link), then the
+    // feedback post on X, to reply to there (River_WLan on X)
+    const report = el("button", "text", t("Open"));
+    report.onclick = async () => {
+      const f = await fetch("/api/feedback?surface=" + (web ? "browser" : "app")).then((r) => r.ok ? r.json() : null).catch(() => null);
+      if (!f) return status(t("Couldn't read the details to copy"), "err");
+      await copy(f.text, "", report, t("Details copied. Paste them in your reply"));
+      api("open", { url: f.url }).catch(statusErr);
+    };
+    row(t("Report a problem"), "", "", report);
+  }
   // magpie uninstall, from the app (Jevik_AI on X deleted magpie's folders
   // by hand and Codex kept pointing at a gateway that was gone). Never in a
   // browser: magpie web would be taken off the computer serving the page.
@@ -21740,7 +21778,7 @@ function renderImageGen(s, keep, box) {
     : libOff ? t("The model Magpie Image draws with. Agents get the Magpie Image tool from the Library, which is turned off in Plugins › Built-in; images are saved in their project")
     : t("The model Magpie Image draws with. Agents get the Magpie Image tool from the Library; images are saved in their project"));
   who.append(el("div", "name", t("Image generation")), sub);
-  if (v !== "off") who.append(...libWay("magpie-image", t("Give agents Magpie Image…"), "image-gen-tool"));
+  if (v !== "off") who.append(...libWay(window.bootPrefs?.jellytool ? "jellytool-image" : "magpie-image", t("Give agents Magpie Image…"), "image-gen-tool"));
   // ChatGPT's images backend picks the model itself, so its one entry says
   // so where it draws, picked or automatic (#1865)
   const draws = v === "off" || gone ? "" : v ? shown : s.imageGenAuto;
@@ -22632,6 +22670,7 @@ async function renderUpdate(r, u) {
     if (!r.isConnected || seqOf(r) !== mine) return;
     updateSeq.set(r, mine + 1); // the answer stands; a read still out is older
     renderUpdate(r, next);
+    if (u.manual) renderUpdateBadge();
   };
   const again = (ms) => {
     const seen = seqOf(r);
@@ -22696,8 +22735,10 @@ async function renderUpdate(r, u) {
       sub.textContent = t("{v} is out", { v: u.latest });
       if (u.stuck) sub.textContent += " · " + updateStuck(u);
       if (u.packaged) { sub.classList.add("wraps"); btn(t("Check"), check); break; }
-      btn(t("Download"), () => (web && u.url ? window.open(u.url, "_blank", "noopener") : api("update/install", {})));
-      if (!web) page();
+      const download = () => (web && u.url ? window.open(u.url, "_blank", "noopener") : api("update/install", {}).catch(statusErr));
+      btn(t("Download"), () => u.manual ? confirmUpdate(u, download) : download());
+      if (u.manual) btn(t("Check"), check);
+      else if (!web) page();
       break;
     case "downloading":
       if (UPDATE_STEPS[u.step] && u.step !== "retry") {
@@ -22728,7 +22769,7 @@ async function renderUpdate(r, u) {
       break;
     case "error":
       // the reason in sight: "timed out" says try a proxy, a 404 says wait
-      sub.textContent = t(u.latest ? "Couldn't download {v}" : "Couldn't check for updates", { v: u.latest }) + (u.error ? " · " + u.error.replace(/^Get "[^"]*": /, "") : "");
+      sub.textContent = t(u.latest && !u.manual ? "Couldn't download {v}" : "Couldn't check for updates", { v: u.latest }) + (u.error ? " · " + u.error.replace(/^Get "[^"]*": /, "") : "");
       // the network broke it off (AIMetaPhD on X): said in the app's words
       if (u.network && u.latest) sub.textContent = t("{v}'s download broke off, a network problem. Click Check to try again, or download it from the release page", { v: u.latest });
       sub.title = u.error || "";
@@ -22757,6 +22798,9 @@ async function renderUpdate(r, u) {
     case "": // not asked yet: with automatic updates off, only this asks
       sub.textContent = prefs && prefs.noAutoUpdate ? t("Automatic updates are off") : "";
       btn(t("Check"), check);
+      break;
+    case "unconfigured":
+      sub.textContent = t("Update checks are not configured for this build.");
       break;
     default: // built from source
       sub.textContent = "";
@@ -23363,6 +23407,7 @@ async function show(v) {
   }
   if (v !== view && !jump) backTo = null;
   view = v;
+  if (v !== "quickstart") guideRead = null;
   renderBack();
   window.hideAccounts?.page();
   if (mode === "window") { try { localStorage.setItem("magpie.lastView", v); } catch { /* not kept */ } }
@@ -23377,13 +23422,14 @@ async function show(v) {
   $("#prefs").classList.toggle("on", v === "settings");
   if (v === "settings") $("#prefs").setAttribute("aria-current", "page"); else $("#prefs").removeAttribute("aria-current");
   navSubs();
-  for (const id of ["agents", "providers", "plugins", "settings", ...magpie.pages()]) $("#view-" + id).hidden = v !== id;
+  for (const id of ["quickstart", "agents", "providers", "plugins", "settings", ...magpie.pages()]) $("#view-" + id).hidden = v !== id;
   // back to where the reader was in it, and again once it has what it loads
   const back = () => backAfterLoad($("#view-" + v));
   requestAnimationFrame(back);
   closePicker();
   closeAgentModels();
   if (v !== "providers" && editing !== null) cancelEdit(true);
+  if (v === "quickstart") refreshQuickstart();
   // a plugin's page loads what it shows; back once it has
   magpie.call(v, "open")?.then?.(back);
   if (v === "providers" && providersBehind) renderProviders();
@@ -23572,7 +23618,7 @@ function jumpFrom(to) {
   jumpNext = true;
 }
 function pageName(v) {
-  return magpie.page(v)?.title ?? ({ agents: "Agents", providers: "Providers", plugins: "Plugins", settings: "Settings" })[v];
+  return magpie.page(v)?.title ?? ({ quickstart: "Get started", agents: "Agents", providers: "Providers", plugins: "Plugins", settings: "Settings" })[v];
 }
 function renderBack() {
   const b = $("#navBack"), on = !!backTo && backTo.view !== view;
@@ -23977,8 +24023,7 @@ function sideBars() {
     place();
   }
 }
-// the sidebar's button in the title bar, as a Mac app has it, at every
-// width; ⌃⌘S as the Mac's View menu has it
+// The sidebar toggle's labels and Mac View-menu shortcut (⌃⌘S).
 function renderSideToggle() {
   const b = $("#sideToggle");
   if (!b) return;
@@ -23988,6 +24033,7 @@ function renderSideToggle() {
   b.title = keys ? `${label} (${keys})` : label;
   b.setAttribute("aria-label", label);
   b.setAttribute("aria-pressed", String(sideNav()));
+  window.jellytoolSideToggle?.(b);
 }
 function toggleSideNav() {
   if (mode !== "window" || phoneWeb()) return;
@@ -24255,9 +24301,8 @@ function renderCrumb(items) {
 // the gateway at the sidebar's foot, boot.js's until providers says (#3429)
 var sideGwAt = window.bootPrefs?.sideGateway;
 function sideGwRead() {
-  if (!(sideGwRead.due && sideNav() && (!sideGwAt || sideGwAt.boot))) return;
-  // the list is not read yet: the read the Providers page is made ready
-  // with (#1519) serves both, one read, not two
+  if (guideRead?.pending || !(sideGwRead.due && sideNav() && (!sideGwAt || sideGwAt.boot))) return;
+  // Reuse the list prefetched for Providers (#1519).
   if (!providers && mode !== "panel") {
     prefetchProviders();
     if (providersEarly) return void providersEarly.read.then((r) => renderSideGw(r?.gateway), () => {});
@@ -24435,7 +24480,7 @@ setInterval(async () => {
   new MutationObserver(later).observe(head, { childList: true, subtree: true, characterData: true });
 }
 window.addEventListener("focus", () => loadBack());
-setInterval(renderUpdateBadge, 15 * 60 * 1000); // a window left open still hears of a new version
+setInterval(renderUpdateBadge, (window.bootPrefs?.jellytool ? 30 : 15 * 60) * 1000); // a window left open still hears of a new version; Jellytool's reads its local status only, the feed checks keep their own interval
 // a browser's page on screen hears of it within a minute (servedAnew)
 if (web) setInterval(() => { if (!document.hidden) renderUpdateBadge(); }, 60e3);
 // renderPluginDot puts a dot on Plugins while a plugin's update waits for

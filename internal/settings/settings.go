@@ -32,6 +32,7 @@ import (
 	"github.com/yetone/magpie/internal/fonts"
 	"github.com/yetone/magpie/internal/lastgood"
 	"github.com/yetone/magpie/internal/lazyre"
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/redact"
 	"github.com/yetone/magpie/internal/steady"
 )
@@ -1976,7 +1977,8 @@ func lockFile() (unlock func()) {
 func Load() Settings {
 	fileMu.RLock()
 	defer fileMu.RUnlock()
-	return load()
+	s := load()
+	return s
 }
 
 // LoadChecked is Load, and an error when what the file holds is unknown:
@@ -1989,7 +1991,8 @@ func Load() Settings {
 func LoadChecked() (Settings, error) {
 	fileMu.RLock()
 	defer fileMu.RUnlock()
-	return loadChecked()
+	s, err := loadChecked()
+	return s, err
 }
 
 // Shared is Load without a copy of its own: the settings every caller of
@@ -2236,7 +2239,7 @@ func CheckProxy(p string) error {
 
 // DefaultPort is the gateway's port unless Settings or MAGPIE_ADDR say
 // another.
-const DefaultPort = 3425
+const DefaultPort = product.DefaultGatewayPort
 
 // CheckPort says what is wrong with a port for the gateway: one from 1024
 // to 65535 (below that a system wants an administrator to listen on it),
@@ -2984,6 +2987,9 @@ func (s Settings) normal() Settings {
 	}
 	if s.UpdateEvery == 0 {
 		s.UpdateEvery = 360
+		if product.Jellytool {
+			s.UpdateEvery = 1440
+		}
 	}
 	if s.TextSize == 0 {
 		s.TextSize = DefaultTextSize()
