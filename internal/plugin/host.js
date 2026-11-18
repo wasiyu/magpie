@@ -3653,7 +3653,8 @@ const handlers = {
     const key = signInKey("jellytoken", "jellytoken")
     const result = await via.run("direct", () => inScope("jellytoken", key, () => a.jellytool(authCopy(key), p)))
     if (result.auth) {
-      setAuth(key, result.auth)
+      // setAuth writes the file before it resolves; the caller reads it next
+      await setAuth(key, result.auth)
       delete result.auth
     }
     return result
