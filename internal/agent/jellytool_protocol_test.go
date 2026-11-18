@@ -40,7 +40,15 @@ func jellytoolProtocolHome(t *testing.T, protocols ...string) string {
 func TestJellytoolOpenCodeNativeProtocol(t *testing.T) {
 	jellytoolProtocolHome(t, "responses", "chat")
 	for _, id := range []string{"opencode", "mimocode", "deveco", "air"} {
-		p := magpieProviderJSONFor("opencode", id).(map[string]any)
+		// as the file holds it: the models are kept in order (orderedJSON)
+		b, err := json.Marshal(magpieProviderJSONFor("opencode", id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var p map[string]any
+		if err := json.Unmarshal(b, &p); err != nil {
+			t.Fatal(err)
+		}
 		ms := p["models"].(map[string]any)
 		response := ms["responses/literal-model"].(map[string]any)
 		sdk, _ := response["provider"].(map[string]any)
