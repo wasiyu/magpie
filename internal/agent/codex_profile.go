@@ -29,7 +29,7 @@ import (
 const codexScopeKey = "codex.scope"
 
 // codexProfileFile is the file `codex -p magpie` reads.
-const codexProfileFile = magpieID + ".config.toml"
+const codexProfileFile = codexProviderID + ".config.toml"
 
 // codexProviderTable is magpie's [model_providers.magpie], with token as
 // the bearer key.
@@ -92,7 +92,7 @@ func codexScopeField(at place, connected func() bool) Field {
 		Options: func(map[string]string) []Option {
 			return []Option{
 				{Value: "", Label: "All of Codex"},
-				{Value: "profile", Label: "codex -p magpie only", Note: "magpie writes magpie.config.toml and nothing else; plain codex keeps its own provider and models"},
+				{Value: "profile", Label: "codex -p " + codexProviderID + " only", Note: product.Text("magpie writes ") + codexProfileFile + " and nothing else; plain codex keeps its own provider and models"},
 			}
 		},
 	}
@@ -102,8 +102,8 @@ func codexScopeField(at place, connected func() bool) Field {
 func codexProfileIn(at place) *Agent {
 	dir := at.codexHome()
 	path := filepath.Join(dir, codexProfileFile)
-	catalogPath := filepath.Join(dir, "magpie-models.json")
-	table := "model_providers." + magpieID
+	catalogPath := filepath.Join(dir, codexProviderID+"-models.json")
+	table := "model_providers." + codexProviderID
 	get := func(k string) string { v, _ := edit.GetTOMLTop(path, k); return v }
 	// the catalog as Codex reads it from this file: beside it, so by name
 	catalogRef := filepath.Base(catalogPath)
@@ -126,7 +126,7 @@ func codexProfileIn(at place) *Agent {
 			os.Remove(catalogPath)
 		}
 	}
-	wired := func() bool { return get("model_provider") == magpieID && isMagpie(get("model")) }
+	wired := func() bool { return get("model_provider") == codexProviderID && isMagpie(get("model")) }
 	// put writes the profile as it should be, touching nothing else
 	put := func(model string) error {
 		if err := edit.SetTOMLTable(path, table, codexProviderTable(at.v1(), codexKeptToken(path, table, at.gwKey()))...); err != nil {
@@ -136,7 +136,7 @@ func codexProfileIn(at place) *Agent {
 			return err
 		}
 		return edit.SetTOMLTop(path,
-			edit.KV{Path: "model_provider", Value: magpieID},
+			edit.KV{Path: "model_provider", Value: codexProviderID},
 			edit.KV{Path: "model_catalog_json", Value: catalogRef},
 			edit.KV{Path: "model", Value: model},
 		)
@@ -160,7 +160,7 @@ func codexProfileIn(at place) *Agent {
 				// magpie serves now (the provider of the model it was set
 				// to was deleted): the list is still magpie's, and Codex
 				// would keep offering the models it had (JNDliuliuM on X)
-				if get("model_provider") == magpieID && get("model_catalog_json") == catalogRef {
+				if get("model_provider") == codexProviderID && get("model_catalog_json") == catalogRef {
 					if cur, err := edit.Read(catalogPath); err == nil {
 						if b := ownList(); string(b) != string(cur) {
 							return writeOwnList(catalogPath, b)

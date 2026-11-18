@@ -83,7 +83,7 @@ import (
 // with the turn's model when its catalog lacks the reviewer; so does magpie.
 // Signed in, Codex's own names go on to OpenAI (codexUpstream) instead.
 func codexStandIn(path string) string {
-	if p, _ := edit.GetTOMLTop(path, "model_provider"); p != magpieID {
+	if p, _ := edit.GetTOMLTop(path, "model_provider"); p != codexProviderID {
 		return ""
 	}
 	m, _ := edit.GetTOMLTop(path, "model")
@@ -269,8 +269,10 @@ func codexIn(at place) *Agent {
 	}
 	dir := at.codexHome()
 	path := filepath.Join(dir, "config.toml")
-	catalogPath := filepath.Join(dir, "magpie-models.json")
+	catalogPath := filepath.Join(dir, codexProviderID+"-models.json")
 	get := func(k string) string { v, _ := edit.GetTOMLTop(path, k); return v }
+	peerActive := func() bool { return product.Jellytool && codexPeerActive(path, at.v1()) }
+	isolated := func() bool { return product.Jellytool }
 	// this machine's Codex reaches the gateway at the address its config
 	// gives, when that is magpie's on another host: the Codex app on
 	// Windows with its agent in WSL reads Windows' config.toml from WSL,
@@ -361,6 +363,11 @@ func codexIn(at place) *Agent {
 	// another tool or a hand edit left the key naming a removed file.
 	dropList := func() {
 		defer unnameGoneList()
+		if product.Jellytool {
+			// Keep the independent catalog for reconnects and user profiles,
+			// including modern Codex's separate <name>.config.toml files.
+			return
+		}
 		cur, err := edit.Read(catalogPath)
 		if err != nil {
 			return
@@ -376,12 +383,15 @@ func codexIn(at place) *Agent {
 			os.Remove(catalogPath)
 		}
 	}
-	asProvider := func() bool { return get("model_provider") == magpieID }
+	asProvider := func() bool { return get("model_provider") == codexProviderID }
 	viaBase := func() bool {
 		u := get("openai_base_url")
-		return isCodexGatewayOn(u, at.host()) || strings.TrimSuffix(u, "/") == at.codexURL()
+		if isolated() {
+			return !peerActive() && strings.TrimSuffix(u, "/") == at.codexURL()
+		}
+		return !peerActive() && (isCodexGatewayOn(u, at.host()) || strings.TrimSuffix(u, "/") == at.codexURL())
 	}
-	routed := func() bool { return asProvider() || viaBase() }
+	routed := func() bool { return !peerActive() && (asProvider() || viaBase()) }
 	// joined: connected by Join, on a model of Codex's own (its last pick)
 	// with magpie's beside it, by the base URL
 	joined := func() bool { return viaBase() && stashShared()[at.key("codex.joined")] == "1" }
@@ -427,7 +437,7 @@ func codexIn(at place) *Agent {
 	// gateway takes as that group
 	wired := func() bool {
 		m := get("model")
-		return isMagpie(m) || joined() || beside() || routed() && setAsGroup(cmp.Or(at.id, "codex"), "model", m)
+		return !peerActive() && (isMagpie(m) || joined() || beside() || routed() && setAsGroup(cmp.Or(at.id, "codex"), "model", m))
 	}
 	// deskList is the list magpie hands Codex beside its ChatGPT sign-in,
 	// written to a file of its own (deskPath) and named by
@@ -439,7 +449,7 @@ func codexIn(at place) *Agent {
 	// magpie's catalog as a provider (catalogPath, ownCatalog): Codex is
 	// on its built-in provider, with its own models from the ChatGPT
 	// backend's list as the backend sent them (CodexDesktopList).
-	deskPath := filepath.Join(dir, "magpie-desktop-models.json")
+	deskPath := filepath.Join(dir, codexProviderID+"-desktop-models.json")
 	deskRef := at.native(deskPath)
 	if at.spell == nil && runtime.GOOS == "windows" {
 		deskRef = filepath.Base(deskPath)
@@ -655,7 +665,7 @@ func codexIn(at place) *Agent {
 	// nothing): the user wrote it, to have the Codex app on magpie with no
 	// ChatGPT account of its own (蛋仔 on Discord), and it stays.
 	ownNoAuth := func() bool {
-		t, _ := edit.GetTOMLTable(path, "model_providers."+magpieID)
+		t, _ := edit.GetTOMLTable(path, "model_providers."+codexProviderID)
 		return t["requires_openai_auth"] == "false"
 	}
 	openaiAuth := func() (want, known bool) {
@@ -669,7 +679,7 @@ func codexIn(at place) *Agent {
 		return signedIn && !codexUsedUp(), true
 	}
 	putProvider := func() error {
-		kvs := codexProviderTable(at.v1(), keptBearerToken("model_providers."+magpieID))
+		kvs := codexProviderTable(at.v1(), keptBearerToken("model_providers."+codexProviderID))
 		// the table's capabilities, the user's or the background
 		// compaction's, aren't lost as it is written again
 		if caps := codexProviderCaps(path); caps != nil {
@@ -681,11 +691,11 @@ func codexIn(at place) *Agent {
 		} else if ownNoAuth() {
 			kvs = append(kvs, edit.KV{Path: "requires_openai_auth", Value: false})
 		}
-		if err := edit.SetTOMLTable(path, "model_providers."+magpieID, kvs...); err != nil {
+		if err := edit.SetTOMLTable(path, "model_providers."+codexProviderID, kvs...); err != nil {
 			return err
 		}
-		if t, _ := edit.GetTOMLTable(path, "model_providers."+magpieID); !want && known && t["requires_openai_auth"] != "" {
-			if err := edit.DelTOMLKey(path, "model_providers."+magpieID, "requires_openai_auth"); err != nil {
+		if t, _ := edit.GetTOMLTable(path, "model_providers."+codexProviderID); !want && known && t["requires_openai_auth"] != "" {
+			if err := edit.DelTOMLKey(path, "model_providers."+codexProviderID, "requires_openai_auth"); err != nil {
 				return err
 			}
 		}
@@ -698,20 +708,20 @@ func codexIn(at place) *Agent {
 		if !known {
 			return false
 		}
-		t, err := edit.GetTOMLTable(path, "model_providers."+magpieID)
+		t, err := edit.GetTOMLTable(path, "model_providers."+codexProviderID)
 		if err != nil || t == nil {
 			return false
 		}
 		return (t["requires_openai_auth"] == "true") != want
 	}
 	hasProvider := func() bool {
-		t, err := edit.GetTOMLTable(path, "model_providers."+magpieID)
+		t, err := edit.GetTOMLTable(path, "model_providers."+codexProviderID)
 		return err == nil && t != nil
 	}
 	// noProvider: the config was read and has no such table; one magpie
 	// can't read is told by Check as it is, and written to by nothing
 	noProvider := func() bool {
-		t, err := edit.GetTOMLTable(path, "model_providers."+magpieID)
+		t, err := edit.GetTOMLTable(path, "model_providers."+codexProviderID)
 		return err == nil && t == nil
 	}
 	// namesMagpie: the config has Codex on magpie as its provider, at its
@@ -726,7 +736,7 @@ func codexIn(at place) *Agent {
 		names, _ := edit.TOMLTables(path)
 		for _, n := range names {
 			if strings.HasPrefix(n, "profiles.") {
-				if t, _ := edit.GetTOMLTable(path, n); t["model_provider"] == magpieID {
+				if t, _ := edit.GetTOMLTable(path, n); t["model_provider"] == codexProviderID {
 					return true
 				}
 			}
@@ -785,11 +795,11 @@ func codexIn(at place) *Agent {
 	// 'codex-2/gpt-6.1-sol' model is not supported when using Codex with
 	// a ChatGPT account", xxxxpouqqs on X).
 	bringBack := func() {
-		if at.spell != nil || namesMagpie() {
+		if isolated() || peerActive() || at.spell != nil || namesMagpie() {
 			return
 		}
 		to := sessions.CodexProviderIn(dir)
-		if to == magpieID {
+		if to == codexProviderID {
 			return
 		}
 		if t3CodexRunsIn(at.home, dir) {
@@ -798,8 +808,8 @@ func codexIn(at place) *Agent {
 		}
 		// in place first where it can be (bringOver's, and those started
 		// on magpie that Codex hasn't packed): no copy of each, no rewrite
-		if len(to) == len(magpieID) {
-			moved, err := sessions.RelabelCodexThreads(dir, magpieID, to)
+		if len(to) == len(codexProviderID) {
+			moved, err := sessions.RelabelCodexThreads(dir, codexProviderID, to)
 			if len(moved) > 0 {
 				log.Printf("codex: %d thread(s) on magpie moved back to %s, where Codex lists them", len(moved), to)
 			}
@@ -810,14 +820,14 @@ func codexIn(at place) *Agent {
 		// then a paginated thread by its row alone, packed or not (bringOver's, and those
 		// started on magpie): Codex reads its provider there, so none of
 		// a big history is copied to the trash or rewritten
-		retagged, err := sessions.RetagPagedCodexThreads(dir, magpieID, to)
+		retagged, err := sessions.RetagPagedCodexThreads(dir, codexProviderID, to)
 		if len(retagged) > 0 {
 			log.Printf("codex: %d paginated thread(s) on magpie moved back to %s, where Codex resumes them", len(retagged), to)
 		}
 		if err != nil {
 			log.Println("codex: moving magpie's paginated threads back:", err)
 		}
-		moved, err := sessions.MoveCodexThreads(dir, magpieID, to)
+		moved, err := sessions.MoveCodexThreads(dir, codexProviderID, to)
 		if len(moved) > 0 {
 			log.Printf("codex: %d thread(s) started on magpie moved to %s, where Codex lists them", len(moved), to)
 		}
@@ -830,8 +840,8 @@ func codexIn(at place) *Agent {
 		// it on the provider it is on now, so Retry fails the same way
 		// each time and its model reads unavailable (nb5p on Discord).
 		// Another Sync comes once the thread is quiet.
-		if sessions.CodexThreadsBusyOn(dir, magpieID) {
-			codexThreadsLater(dir, magpieID)
+		if sessions.CodexThreadsBusyOn(dir, codexProviderID) {
+			codexThreadsLater(dir, codexProviderID)
 		}
 	}
 	// lent are the threads lendOwn moved off OpenAI, and the provider of
@@ -896,7 +906,7 @@ func codexIn(at place) *Agent {
 	// current provider is magpie", Parry_Moody and Cyrus on Discord).
 	// bringBack moves them back the same way.
 	bringOver := func() {
-		if at.spell != nil || !asProvider() || sessions.CodexProviderIn(dir) != magpieID {
+		if isolated() || at.spell != nil || !asProvider() || sessions.CodexProviderIn(dir) != codexProviderID {
 			return
 		}
 		from := stashShared()[at.key("codex.provider")]
@@ -904,14 +914,14 @@ func codexIn(at place) *Agent {
 			from = "openai"
 		}
 		// CC Switch's official route is bringOfficial's
-		if from == magpieID || from == ccSwitchOfficial {
+		if from == codexProviderID || from == ccSwitchOfficial {
 			return
 		}
 		names, _ := edit.TOMLTables(path)
 		if from != "openai" && profileNamed(names)[from] {
 			return
 		}
-		_, more := codexOnto(dir, from, magpieID)
+		_, more := codexOnto(dir, from, codexProviderID)
 		// one the Codex app has open (the chat on screen as magpie became
 		// the provider) or wrote to this minute stayed on from: it moves
 		// once it is let go (crypto0xfish on Discord)
@@ -929,7 +939,7 @@ func codexIn(at place) *Agent {
 		// to OpenAI once Codex is on it again. None while a profile names
 		// OpenAI, whose threads the user goes on with there.
 		if from != "openai" && !profileNamed(names)["openai"] {
-			ids, m := codexOnto(dir, "openai", magpieID)
+			ids, m := codexOnto(dir, "openai", codexProviderID)
 			more = more || m
 			if len(ids) > 0 {
 				l := lent()
@@ -965,7 +975,7 @@ func codexIn(at place) *Agent {
 	// base_url (or magpie's codexURL while failing over, or while
 	// takeMirrors has it).
 	isCCSwitchMirror := func(p string) bool {
-		if p == "" || p == "openai" || p == magpieID {
+		if p == "" || p == "openai" || p == codexProviderID {
 			return false
 		}
 		t, err := edit.GetTOMLTable(path, "model_providers."+p)
@@ -1000,7 +1010,7 @@ func codexIn(at place) *Agent {
 			return
 		}
 		to := sessions.CodexProviderIn(dir)
-		if to != "openai" && to != magpieID {
+		if to != "openai" && to != codexProviderID {
 			return
 		}
 		names, _ := edit.TOMLTables(path)
@@ -1061,7 +1071,7 @@ func codexIn(at place) *Agent {
 			return
 		}
 		from := stashShared()[at.key("codex.provider")]
-		if from == "" || from == "openai" || from == magpieID || from == ccSwitchOfficial {
+		if from == "" || from == "openai" || from == codexProviderID || from == ccSwitchOfficial {
 			return
 		}
 		names, _ := edit.TOMLTables(path)
@@ -1124,8 +1134,8 @@ func codexIn(at place) *Agent {
 	// followBeside: magpie made Codex's provider since, the threads
 	// bringBeside moved onto OpenAI go on to magpie, as bringOver's do
 	followBeside := func() {
-		if asProvider() && brought().From != "" && sessions.CodexProviderIn(dir) == magpieID {
-			giveBeside(magpieID)
+		if asProvider() && brought().From != "" && sessions.CodexProviderIn(dir) == codexProviderID {
+			giveBeside(codexProviderID)
 		}
 	}
 	// The provider tables in Codex's config a reopened thread goes to,
@@ -1148,7 +1158,7 @@ func codexIn(at place) *Agent {
 		read := false
 		for _, n := range names {
 			id, ok := strings.CutPrefix(n, "model_providers.")
-			if !ok || id == magpieID || codexBuiltinProvider[id] || named[id] || isCCSwitchMirror(id) {
+			if !ok || id == codexProviderID || (product.Jellytool && id == codexPeerID()) || codexBuiltinProvider[id] || named[id] || isCCSwitchMirror(id) {
 				continue
 			}
 			t, _ := edit.GetTOMLTable(path, n)
@@ -1183,7 +1193,7 @@ func codexIn(at place) *Agent {
 		ids := filedTables()
 		n := len(ids)
 		for id, v := range providers {
-			if id == magpieID || codexBuiltinProvider[id] || codexThreadTableOurs(id, v) || slices.Contains(ids, id) {
+			if id == codexProviderID || codexBuiltinProvider[id] || codexThreadTableOurs(id, v) || slices.Contains(ids, id) {
 				continue
 			}
 			ids = append(ids, id)
@@ -1268,7 +1278,7 @@ func codexIn(at place) *Agent {
 			return nil
 		}
 		for _, id := range sessions.CodexThreadProviders(dir) {
-			if _, ok := providers[id]; ok || id == magpieID || codexBuiltinProvider[id] || !threadTableFor(id) {
+			if _, ok := providers[id]; ok || id == codexProviderID || (product.Jellytool && id == codexPeerID()) || codexBuiltinProvider[id] || !threadTableFor(id) {
 				continue
 			}
 			if err := edit.SetTOMLTable(path, "model_providers."+id,
@@ -1347,6 +1357,9 @@ func codexIn(at place) *Agent {
 	// are gone (putThreadTables), and takes CC Switch's OpenAI mirrors
 	// (takeMirrors)
 	takeTables := func() error {
+		if isolated() {
+			return nil
+		}
 		if err := putThreadTables(); err != nil {
 			return err
 		}
@@ -1448,7 +1461,7 @@ func codexIn(at place) *Agent {
 		if !codexHeldOnMagpie(dir) {
 			return false
 		}
-		codexThreadsLater(dir, magpieID)
+		codexThreadsLater(dir, codexProviderID)
 		return true
 	}
 	dropBase := func() error {
@@ -1565,7 +1578,7 @@ func codexIn(at place) *Agent {
 			return
 		}
 		to := get("model_provider")
-		if to == "" || to == "openai" || to == magpieID || to == ccSwitchOfficial || sessions.CodexProviderIn(dir) != to {
+		if to == "" || to == "openai" || to == codexProviderID || to == ccSwitchOfficial || sessions.CodexProviderIn(dir) != to {
 			return
 		}
 		names, _ := edit.TOMLTables(path)
@@ -1606,7 +1619,7 @@ func codexIn(at place) *Agent {
 			return
 		}
 		now := sessions.CodexProviderIn(dir)
-		if now == l.To || now == magpieID {
+		if now == l.To || now == codexProviderID {
 			return
 		}
 		if now == "openai" && at.spell == nil {
@@ -1636,7 +1649,7 @@ func codexIn(at place) *Agent {
 	// pointed at magpie (codex.mirror_failover). A base URL the user wrote
 	// by hand, unmarked, is theirs and stays (#856).
 	failover := func() error {
-		if wired() || asProvider() {
+		if isolated() || peerActive() || wired() || asProvider() {
 			return nil
 		}
 		if err := dropMirrorFailover(); err != nil {
@@ -1671,7 +1684,7 @@ func codexIn(at place) *Agent {
 		// 选项中没有 via magpie)
 		p := get("model_provider")
 		to, through := "OpenAI", routed()
-		if p != "" && p != magpieID && p != "openai" {
+		if p != "" && p != codexProviderID && p != "openai" {
 			// a provider of the user's own, or CC Switch's, pointed at
 			// magpie or not
 			t, _ := edit.GetTOMLTable(path, "model_providers."+p)
@@ -1696,7 +1709,7 @@ func codexIn(at place) *Agent {
 			}
 			return own
 		}
-		if p != "" && p != magpieID && !isCCSwitchMirror(p) {
+		if p != "" && p != codexProviderID && !isCCSwitchMirror(p) {
 			own = say(group(p, codexNamed(catalog.Codex())))
 		} else {
 			own = codexInMagpie(say(group("OpenAI", codexNamed(ownCodex()))))
@@ -1763,7 +1776,7 @@ func codexIn(at place) *Agent {
 		// change still stands: a key the user set by hand since keeps
 		// theirs (yhwangl on X)
 		var back []edit.KV
-		if p := peeked[at.key("codex.provider")]; p != "" && p != magpieID && get("model_provider") == "" {
+		if p := peeked[at.key("codex.provider")]; p != "" && p != codexProviderID && get("model_provider") == "" {
 			back = append(back, edit.KV{Path: "model_provider", Value: p})
 		}
 		// the catalog of the user's own put back while its file is there:
@@ -1829,7 +1842,7 @@ func codexIn(at place) *Agent {
 			// a reset takes magpie's keys out, not theirs, and Codex
 			// goes on resuming the threads it saved with theirs
 			keys := []string{"model", "model_catalog_json"}
-			if p := get("model_provider"); p == "" || p == "openai" || p == magpieID {
+			if p := get("model_provider"); p == "" || p == "openai" || p == codexProviderID {
 				keys = append(keys, "model_provider")
 			}
 			if err := edit.DelTOMLTop(path, keys...); err != nil {
@@ -1874,7 +1887,7 @@ func codexIn(at place) *Agent {
 			// put back.
 			p := get("model_provider")
 			ours := asProvider() || p == "" || p == "openai" || isCCSwitchMirror(p)
-			chatgpt := !api() && chatGPT()
+			chatgpt := !isolated() && !api() && chatGPT()
 			if chatgpt && !outOn(v) && ours {
 				forget(at.key("codex.out"))
 				if err := dropProvider(); err != nil {
@@ -1923,11 +1936,11 @@ func codexIn(at place) *Agent {
 			// URL sends that one to magpie too, not to the ChatGPT backend,
 			// which refuses it (#259). A base URL of the user's own stays.
 			kv := []edit.KV{
-				{Path: "model_provider", Value: magpieID},
+				{Path: "model_provider", Value: codexProviderID},
 				{Path: "model_catalog_json", Value: catalogRef},
 				{Path: "model", Value: v},
 			}
-			if u := get("openai_base_url"); u == "" || viaBase() {
+			if u := get("openai_base_url"); !isolated() && (u == "" || viaBase()) {
 				kv = append(kv, edit.KV{Path: "openai_base_url", Value: at.codexURL()})
 			}
 			if err := edit.SetTOMLTop(path, kv...); err != nil {
@@ -1990,10 +2003,19 @@ func codexIn(at place) *Agent {
 		// installed, OpenAI and its default model, where this brings back
 		// the provider and model the user had
 		Unwire: func() error {
+			if peerActive() {
+				return nil
+			}
 			now := get("model")
 			was, err := unroute()
 			if err != nil {
 				return err
+			}
+			if peerActive() {
+				if was != "" {
+					return edit.SetTOMLTop(path, edit.KV{Path: "model", Value: was})
+				}
+				return nil
 			}
 			if err := dropSubagent(); err != nil {
 				return err
@@ -2029,7 +2051,7 @@ func codexIn(at place) *Agent {
 		// was on, the one last picked in its /model (the owner: 让 Codex 记住
 		// 上次的选择), and magpie's models join its list
 		Join: func() (bool, error) {
-			if api() || !chatGPT() || out() || isMagpie(get("model")) {
+			if isolated() || api() || !chatGPT() || out() || isMagpie(get("model")) {
 				return false, nil
 			}
 			if p := get("model_provider"); p != "" && p != "openai" && !isCCSwitchMirror(p) {
@@ -2127,6 +2149,9 @@ func codexIn(at place) *Agent {
 			return ""
 		},
 		Sync: func() error {
+			if peerActive() {
+				return nil
+			}
 			// a table an older magpie wrote for another app's provider
 			// goes, wired or not: Codex refuses its config with it
 			if err := tidyTables(); err != nil {
@@ -2303,7 +2328,7 @@ func codexIn(at place) *Agent {
 			case asProvider() && ownCatalog(get("model_catalog_json")):
 				// set up by a magpie from before #259: the threads started
 				// on Codex's built-in provider reach magpie too
-				if get("openai_base_url") == "" {
+				if !isolated() && get("openai_base_url") == "" {
 					if err := edit.SetTOMLTop(path, edit.KV{Path: "openai_base_url", Value: at.codexURL()}); err != nil {
 						return err
 					}
@@ -2361,7 +2386,7 @@ func codexIn(at place) *Agent {
 			}
 			switch {
 			case asProvider():
-				t, err := edit.GetTOMLTable(path, "model_providers."+magpieID)
+				t, err := edit.GetTOMLTable(path, "model_providers."+codexProviderID)
 				if err != nil {
 					return err.Error()
 				}
@@ -2609,8 +2634,19 @@ func codexIn(at place) *Agent {
 				// (#1824, Qyburn3 on X). Kept in the stash, where set("")
 				// leaves it.
 				Key: "login", Label: "sign-in", Quiet: true,
-				Get: func() string { return stashShared()[at.key("codex.login")] },
+				Get: func() string {
+					if isolated() {
+						return "api"
+					}
+					return stashShared()[at.key("codex.login")]
+				},
 				Set: func(v string) error {
+					if isolated() {
+						if v == "" || v == "api" {
+							return nil
+						}
+						return fmt.Errorf("%s uses a separate Codex provider while product isolation is enabled", product.Name)
+					}
 					if v != "" && v != "api" && v != "chatgpt" {
 						return fmt.Errorf("sign-in is api, chatgpt or empty (ChatGPT), not %q", v)
 					}
@@ -2631,6 +2667,9 @@ func codexIn(at place) *Agent {
 					return nil
 				},
 				Options: func(map[string]string) []Option {
+					if isolated() {
+						return []Option{{Value: "api", Label: product.Name + " API", Note: "Separate provider; other products keep their own connection settings"}}
+					}
 					return []Option{
 						{Value: "", Label: "ChatGPT", Note: "magpie's models join Codex's own; Codex stays signed in to ChatGPT, and while the Codex app blocks its account (out of allowance, no credits left) magpie is Codex's provider, so the app still sends"},
 						{Value: "chatgpt", Label: "Always ChatGPT", Note: "as ChatGPT, and kept so while the Codex app blocks its account: magpie never becomes Codex's provider. The Codex app may then send nothing till the account has room; Codex CLI goes on through magpie"},
@@ -2653,6 +2692,9 @@ func codexIn(at place) *Agent {
 	}
 	// in a distro too: its way to Windows moves (wslFindVia)
 	a.move = func(from, to string) error { return codexMoveGateway(path, from, to) }
+	if product.Jellytool {
+		return codexIsolated(a, at.v1())
+	}
 	return a
 }
 
@@ -2970,11 +3012,11 @@ func codexKeptGateway(path string) string {
 	}
 	base, _ := edit.GetTOMLTop(path, "openai_base_url")
 	var table string
-	if t, _ := edit.GetTOMLTable(path, "model_providers."+magpieID); ourKey(t["experimental_bearer_token"]) {
+	if t, _ := edit.GetTOMLTable(path, "model_providers."+codexProviderID); ourKey(t["experimental_bearer_token"]) {
 		table = kept(t["base_url"], "/v1")
 	}
 	// the one Codex is on first: magpie's table when it is the provider
-	if p, _ := edit.GetTOMLTop(path, "model_provider"); p == magpieID && table != "" {
+	if p, _ := edit.GetTOMLTop(path, "model_provider"); p == codexProviderID && table != "" {
 		return table
 	}
 	return cmp.Or(kept(base, gateway.CodexPath), table, gateway.URL())
@@ -2990,8 +3032,8 @@ func codexMoveGateway(path, from, to string) error {
 			return err
 		}
 	}
-	if t, _ := edit.GetTOMLTable(path, "model_providers."+magpieID); ourKey(t["experimental_bearer_token"]) && strings.HasPrefix(t["base_url"], from+"/") {
-		return edit.SetTOMLKey(path, "model_providers."+magpieID, "base_url", to+strings.TrimPrefix(t["base_url"], from))
+	if t, _ := edit.GetTOMLTable(path, "model_providers."+codexProviderID); ourKey(t["experimental_bearer_token"]) && strings.HasPrefix(t["base_url"], from+"/") {
+		return edit.SetTOMLKey(path, "model_providers."+codexProviderID, "base_url", to+strings.TrimPrefix(t["base_url"], from))
 	}
 	return nil
 }
@@ -3170,13 +3212,13 @@ var codexAppFollows = provider.CodexRestartsApp
 func codexHeldOnMagpie(dir string) bool {
 	var skip func(string) bool
 	if user, _ := homes(); t3CodexRunsIn(user, dir) {
-		by, ok := sessions.CodexThreadsBy(dir, magpieID)
+		by, ok := sessions.CodexThreadsBy(dir, codexProviderID)
 		skip = func(id string) bool {
 			t, found := by[id]
 			return ok && found && t3Started(t.Originator)
 		}
 	}
-	return sessions.CodexThreadsBusyOnBut(dir, magpieID, skip)
+	return sessions.CodexThreadsBusyOnBut(dir, codexProviderID, skip)
 }
 
 // codexFailover reports whether Codex is signed in to a ChatGPT account
@@ -3515,7 +3557,7 @@ func t3Started(originator string) bool {
 // Codex instance, on OpenAI's models, stay. When who started the
 // threads can't be read, none moves.
 func t3BringBack(dir, to string) {
-	on, ok := sessions.CodexThreadsBy(dir, magpieID)
+	on, ok := sessions.CodexThreadsBy(dir, codexProviderID)
 	if !ok {
 		return
 	}
@@ -3526,7 +3568,7 @@ func t3BringBack(dir, to string) {
 		}
 	}
 	slices.Sort(ids)
-	t3Move(dir, magpieID, to, ids, "started on magpie by another client than T3 Code")
+	t3Move(dir, codexProviderID, to, ids, "started on magpie by another client than T3 Code")
 	gone, ok := sessions.CodexThreadsBy(dir, to)
 	if !ok {
 		return
@@ -3538,7 +3580,7 @@ func t3BringBack(dir, to string) {
 		}
 	}
 	slices.Sort(back)
-	t3Move(dir, to, magpieID, back, "T3 Code started on magpie")
+	t3Move(dir, to, codexProviderID, back, "T3 Code started on magpie")
 }
 
 // t3Move moves the threads ids of the Codex folder dir from the provider
@@ -3571,16 +3613,16 @@ func t3Move(dir, from, to string, ids []string, what string) {
 // (sessions.RetagLoadedCodexThreads).
 func codexRetagOpenThreads(home string) {
 	now := sessions.CodexProviderIn(home)
-	for _, from := range []string{"openai", magpieID} {
+	for _, from := range []string{"openai", codexProviderID} {
 		if from == now {
 			continue
 		}
 		// T3 Code's threads on magpie stay there, where T3 resumes them
 		// (t3BringBack); none moves when who started them is unknown
 		var keep func(string) bool
-		if from == magpieID {
+		if from == codexProviderID {
 			if user, _ := homes(); t3CodexRunsIn(user, home) {
-				by, ok := sessions.CodexThreadsBy(home, magpieID)
+				by, ok := sessions.CodexThreadsBy(home, codexProviderID)
 				keep = func(id string) bool {
 					t, found := by[id]
 					return !ok || !found || t3Started(t.Originator)

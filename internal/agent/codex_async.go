@@ -226,7 +226,7 @@ func codexAsyncNow(path string) (feature any, provider map[string]any, err error
 	}
 	features, _ := doc.Features.(map[string]any)
 	providers, _ := doc.ModelProviders.(map[string]any)
-	p, _ := providers[magpieID].(map[string]any)
+	p, _ := providers[codexProviderID].(map[string]any)
 	return features["async_compaction"], p, nil
 }
 
@@ -374,12 +374,12 @@ func codexAsyncSync(path, key string, routed, on bool, percent int, tableOK bool
 		}
 		switch {
 		case want && provider["capabilities"] == nil:
-			if err := edit.SetTOMLKey(path, "model_providers."+magpieID, "capabilities", edit.Inline{{Path: "remote_compaction", Value: "v2"}}); err != nil {
+			if err := edit.SetTOMLKey(path, "model_providers."+codexProviderID, "capabilities", edit.Inline{{Path: "remote_compaction", Value: "v2"}}); err != nil {
 				return err
 			}
 			st.Cap = true
 		case !want && st.Cap:
-			if err := edit.DelTOMLKey(path, "model_providers."+magpieID, "capabilities"); err != nil {
+			if err := edit.DelTOMLKey(path, "model_providers."+codexProviderID, "capabilities"); err != nil {
 				return err
 			}
 			st.Cap = false

@@ -382,6 +382,7 @@ const I18N = {
     "Cost first": "成本优先",
     "Response first": "响应优先",
     "Tools and automation": "工具调用与自动化",
+    "Some unsupported or duplicate model entries were skipped. You can continue with the available models.": "已跳过不支持或重复的模型条目，可以继续使用可用模型。",
     "MCP hub": "MCP 聚合",
     "in {agents}": "用于 {agents}",
     "Browser access": "浏览器访问",
@@ -6050,6 +6051,7 @@ const I18N = {
     "Cost first": "成本優先",
     "Response first": "回應優先",
     "Tools and automation": "工具呼叫與自動化",
+    "Some unsupported or duplicate model entries were skipped. You can continue with the available models.": "已略過不支援或重複的模型項目，可以繼續使用可用模型。",
     "MCP hub": "MCP 聚合",
     "in {agents}": "用於 {agents}",
     "Browser access": "瀏覽器存取",
@@ -11702,6 +11704,7 @@ const I18N = {
     "Cost first": "コスト優先",
     "Response first": "応答速度優先",
     "Tools and automation": "ツールと自動化",
+    "Some unsupported or duplicate model entries were skipped. You can continue with the available models.": "未対応または重複したモデル項目をスキップしました。利用可能なモデルで続行できます。",
     "MCP hub": "MCP ハブ",
     "in {agents}": "{agents} で使用",
     "Browser access": "ブラウザからのアクセス",
@@ -17356,6 +17359,7 @@ const I18N = {
     "Cost first": "Kosten zuerst",
     "Response first": "Antwortzeit zuerst",
     "Tools and automation": "Tools und Automatisierung",
+    "Some unsupported or duplicate model entries were skipped. You can continue with the available models.": "Nicht unterstützte oder doppelte Modelleinträge wurden übersprungen. Sie können mit den verfügbaren Modellen fortfahren.",
     "MCP hub": "MCP-Hub",
     "in {agents}": "in {agents}",
     "Browser access": "Browserzugriff",
@@ -22835,6 +22839,27 @@ function dateFmt(opts) {
   let f = dateFmts.get(key);
   if (!f) dateFmts.set(key, (f = new Intl.DateTimeFormat(lang, opts)));
   return f;
+}
+
+// Brand only known prose templates, before inserting names, commands or paths
+// supplied by users/plugins. The underlying translation keys and protocol stay
+// compatible with upstream and with plugins loaded after this file.
+function productText(s, key = s) {
+  if (!window.bootPrefs?.jellytool) return s;
+  if (/what agents call the gateway|model_provider|remote magpie|(?:another|other|that) computer['’]s magpie|magpie community|written for magpie|existing magpie|one server, magpie|server (?:in the library is )?(?:called|named) magpie|has (?:an MCP server called|its own) magpie|folder named magpie/i.test(key)) return s;
+  s = s.replace(/Little Magpie|小鹊|小鵲/g, "Jellytool");
+  if (key.includes("Little Magpie")) s = s.replace(/[Dd]ie kleine Elster/g, "Jellytool").replace(/der Elster/g, "von Jellytool");
+  // German compounds are prose; identifiers already present in the source key
+  // (sk-magpie-*, X-Magpie-*) still keep their spelling.
+  if (!/magpie-/i.test(key)) s = s.replace(/magpie(?=-[A-Z])/gi, "Jellytool");
+  if (key.startsWith("{env}=magpie")) s = s.replace("=magpie", "=jellytool");
+  if (key.includes("~/.config/magpie/providers.json")) s = s.replaceAll("~/.config/magpie/providers.json", "~/.config/jellytool/providers.json");
+  return s.replace(/magpie/gi, (word, at) => {
+    const before = s[at - 1] || "", after = s.slice(at + word.length);
+    if (/[\w./\\@-]/.test(before) || /^[\w/\\-]|^\.[^\s]|^:\/\//.test(after)) return word;
+    if (/run magpie|magpie command|links magpie|in a new terminal, magpie/i.test(key)) return "jellytool";
+    return /^ (app|gui|tray|panel|tui|web|serve|daemon|help|version|licenses|ls|list|provider|providers|presets|model|models|visible|group|groups|account|accounts|quota|quotas|usage|library|lib|plugin|plugins|search|tool|tools|backup|restore|webdav|s3|github|autostart|healthcheck|heap|cpu|goroutines|statusline|claude-code|agy|codex|claude)\b/.test(after) ? "jellytool" : "Jellytool";
+  });
 }
 
 // Brand only known prose templates, before inserting names, commands or paths

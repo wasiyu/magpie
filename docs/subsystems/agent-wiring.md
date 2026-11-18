@@ -536,3 +536,81 @@ empty temporary HOME, requires native adapters, and rejects WSL entries. This pr
 product composition only; it does not prove that a real tool accepts the generated
 configuration or that an existing magpie installation coexists. Those checks require
 separate platform, account and configuration authorization. See [Jellytool P3 preparation](../plans/jellytool-plugin-p3.md).
+
+## Codex product isolation
+
+Jellytool uses `model_providers.jellytool`, `jellytool-models.json` and
+`jellytool-desktop-models.json`; the upstream build retains the `magpie`
+names. This identity is scoped to Codex, not every client's protocol IDs.
+The implementation is in [`codex_isolation.go`](../../internal/agent/codex_isolation.go)
+and [`codex.go`](../../internal/agent/codex.go).
+
+The isolation implementation is compiled only with the `jellytool` build tag.
+The upstream Magpie build retains its original behavior even when a Jellytool
+provider table exists: no new lock, generated profile, ownership guard or
+sign-in mode is enabled for Magpie.
+
+Jellytool connects as a separate provider even with a ChatGPT sign-in. It does
+not redirect OpenAI's global base URL, take over other provider tables, or
+relabel OpenAI history. Existing provider definitions stay for
+resuming their threads. Background sync and disconnect leave a peer's active
+configuration alone, including when both serve the same model ID. Selecting
+a model explicitly may switch the top-level provider; disconnect restores the
+previous peer and its model. A selected profile for another provider prevents
+that top-level switch and returns an actionable error on the legacy in-file
+profile path.
+
+Switching changes the default provider, model and catalog together for new
+Codex conversations after the client reloads its configuration. Existing
+conversations keep their provider. The products connect directly to their own
+gateways; this does not aggregate their model lists or proxy one through the
+other. It also does not enable cross-provider model switching within a thread.
+
+Jellytool does not generate CLI profiles. Codex 0.134 and later reads
+`<name>.config.toml` for `--profile`, not the old `[profiles.<name>]` table
+([upstream documentation](https://learn.chatgpt.com/docs/config-file/config-advanced#profiles)).
+Existing profiles in either format are user-owned and remain untouched.
+Jellytool's provider table and model catalog stay on disconnect for existing
+threads, user profiles and a later reconnect, even without an in-file profile
+referencing them. Magpie's files and authentication are left alone.
+
+An old Jellytool `magpie` entry is recognized for an explicit reconnection
+only when its endpoint exactly matches Jellytool's gateway. The new provider
+and catalog are written separately; the old provider and files remain intact
+for existing threads. A filename alone is insufficient evidence to migrate or
+delete Magpie's data. Legacy beside-sign-in connections are recognized by their
+catalog or peer endpoint; default ports also identify older connections.
+
+Jellytool config mutations acquire `config.toml.provider.lock` before reading
+and before the rollback snapshot; failure to acquire it stops the write.
+Unmodified Magpie and unrelated config editors do not honor this lock.
+External rewrites are normal ownership changes, not corruption to automatically
+repair. Jellytool re-reads the file before each operation. A Magpie provider,
+its OpenAI base URL/catalog, or a Jellytool provider table redirected to a
+different endpoint makes Jellytool yield: sync and disconnect leave that
+configuration intact. Provider ID alone is not evidence of an active Jellytool
+connection. A malformed file is left untouched and reported; a later sync can
+read the completed external write normally.
+
+An explicit reconnect rebuilds Jellytool's own provider and missing catalog,
+preserves Magpie's table and uses the newly observed configuration as the
+restore point instead of the configuration from Jellytool's first connection.
+The lock coordinates Jellytool writers only; it does not serialize Magpie's
+writes or guarantee a transaction across both products. This contract covers
+Codex wiring, not other clients or shared account discovery.
+
+Verification: `go test ./internal/agent`; `go test -tags jellytool
+./internal/agent -run TestCodexIsolation`. The isolation cases exercise peer
+ownership, explicit switch/restore, same-model collisions, profile retention,
+legacy file preservation, user profiles, and lock contention.
+`TestCodexIsolationSwitchRoundTrip` checks repeated connect/sync/disconnect
+cycles, restoring the peer's model and catalog while keeping its endpoint,
+token, custom headers, global base URL and auth file.
+`TestCodexIsolationModernProfileKeepsCatalog` guards a separate CLI profile
+against catalog removal on disconnect.
+`TestCodexIsolationExternalRewriteAndReconnect` exercises an already connected
+instance through external provider/base URL/table rewrites, repeated sync,
+disconnect and reconnect. `TestCodexIsolationIncompleteExternalRewrite` covers
+an incomplete write followed by a valid one.
+`TestCodexMagpieKeepsOriginalWiringBesideJellytool` guards the unchanged
+upstream build, including with a Jellytool provider present.

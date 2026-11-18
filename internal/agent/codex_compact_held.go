@@ -85,7 +85,7 @@ func CodexModel(home string) string {
 		t, _ := edit.GetTOMLTable(path, "profiles."+tomlQuoted(name))
 		m, p = cmp.Or(t["model"], m), cmp.Or(t["model_provider"], p)
 	}
-	if p != magpieID {
+	if p != codexProviderID {
 		return ""
 	}
 	return m

@@ -33,7 +33,7 @@ func TestJellytoolConnectionDraftsAndCommit(t *testing.T) {
 				w.WriteHeader(403)
 				return
 			}
-			fmt.Fprint(w, `{"data":[{"id":"vendor/text:exact","type":"TEXT"}]}`)
+			fmt.Fprint(w, `{"data":[null,{"id":"audio","type":"AUDIO"},{"id":"vendor/text:exact","type":"TEXT"},{"id":"vendor/text:exact","type":"TEXT"}]}`)
 			return
 		}
 		if strings.HasSuffix(r.URL.Path, "/responses") && strings.HasPrefix(r.URL.Path, "/draft/") {
@@ -136,8 +136,12 @@ func TestJellytoolConnectionDraftsAndCommit(t *testing.T) {
 		{"gemini", "@ai-sdk/google", "/prefix/v1beta/models/vendor%2Ftext:exact:generateContent", `{"contents":[]}`},
 		{"decide", "@ai-sdk/openai-compatible", "/prefix/v1/systemone", `{"model":"vendor/text:exact","questions":{}}`},
 	} {
-		if _, err := call(map[string]any{"action": "save", "baseURL": b.URL + "/prefix/v1", "api": tc.api, "key": "new-key"}); err != nil {
+		saved, err := call(map[string]any{"action": "save", "baseURL": b.URL + "/prefix/v1", "api": tc.api, "key": "new-key"})
+		if err != nil {
 			t.Fatal(err)
+		}
+		if warnings, ok := saved["warnings"].([]any); !ok || len(warnings) != 1 || !strings.Contains(fmt.Sprint(warnings[0]), "skipped") {
+			t.Fatalf("expected a non-blocking catalog warning: %v", saved)
 		}
 		ps, err := p.Providers(ctx)
 		if err != nil || len(ps) != 1 || len(ps[0].Models) != 1 || ps[0].Models[0].NPM != tc.npm {

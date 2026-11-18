@@ -13,10 +13,13 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--bun', type=Path, required=True, help='local Bun 1.4.2 executable')
 parser.add_argument('--output', type=Path, required=True, help='new Jellytool.app path')
 parser.add_argument('--version', default='dev', help='Jellytool release version, e.g. 0.1.0 (default: dev)')
+parser.add_argument('--build', default='', help='CFBundleVersion build marker, e.g. 20261115.1')
 parser.add_argument('--update-feed', default='', help='HTTPS URL of the Jellytool update JSON')
 args = parser.parse_args()
 if args.version != 'dev' and not re.fullmatch(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)', args.version):
     parser.error('version must be dev or a release version such as 0.1.0')
+if args.build and not re.fullmatch(r'[0-9]+(?:\.[0-9]+)*', args.build):
+    parser.error('build must contain only numeric dot-separated components')
 try:
     feed = urlsplit(args.update_feed)
     valid_feed = feed.scheme == 'https' and bool(feed.hostname) and feed.username is None and not feed.fragment
@@ -24,8 +27,10 @@ except ValueError:
     valid_feed = False
 if args.update_feed and (not valid_feed or re.search(r'''[\s'"\\]''', args.update_feed)):
     parser.error('update-feed must be an HTTPS URL without credentials, fragments or whitespace')
-if args.version != 'dev' and not args.update_feed:
-    parser.error('a release version requires --update-feed; use dev for a local build')
+if args.version != 'dev' and not args.update_feed and not args.build:
+    parser.error('a release version requires --update-feed, unless --build is set for a local production artifact')
+if args.version == 'dev' and args.build:
+    parser.error('a build marker requires a release version')
 if sys.platform != 'darwin':
     parser.error('this packager currently builds macOS apps only')
 root = Path(__file__).resolve().parents[2]
@@ -40,7 +45,7 @@ resources.mkdir()
 ldflags = f'-X main.version={args.version}'
 if args.update_feed:
     ldflags += f' -X github.com/yetone/magpie/internal/update.JellytoolFeed={args.update_feed}'
-subprocess.run(['go', 'build', '-tags', 'jellytool', '-ldflags', ldflags, '-o', str(macos / 'jellytool'), '.'], cwd=root, check=True)
+subprocess.run(['go', 'build', '-tags', 'jellytool,production', '-ldflags', ldflags, '-o', str(macos / 'jellytool'), '.'], cwd=root, check=True)
 subprocess.run(['go', 'run', './cmd/jellytool-pack', str(bun), str(resources / 'jellytool')], cwd=root, check=True)
 # Use the same A2 app artwork as the native window; keep the supplier logo separate.
 iconset = output.parent / 'jellytool.iconset'
@@ -67,6 +72,6 @@ with (output / 'Contents/Info.plist').open('wb') as f:
                   'CFBundleIdentifier': 'com.jellytoken.jellytool.dev', 'CFBundleExecutable': 'jellytool',
                   'CFBundleIconFile': 'jellytool.icns', 'CFBundlePackageType': 'APPL',
                   'CFBundleShortVersionString': args.version if args.version != 'dev' else '0.0.0',
-                  'CFBundleVersion': args.version if args.version != 'dev' else '0.0.0',
+                  'CFBundleVersion': args.build or (args.version if args.version != 'dev' else '0.0.0'),
                   'LSMinimumSystemVersion': '12.0', 'NSHighResolutionCapable': True}, f)
 print(output)

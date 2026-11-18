@@ -37,12 +37,28 @@ type jellytoolRuntimeLock struct {
 // Bun. It never downloads or installs anything. The app packager owns and must
 // protect these resources (including runtime-lock.json) with the app itself.
 func PackJellytoolPlugins(ctx context.Context, bun, resources string) error {
+	return packJellytoolPlugins(ctx, bun, resources, runtime.GOOS, runtime.GOARCH, true)
+}
+
+// PackJellytoolPluginsFor stages resources for a cross-compiled Jellytool.
+// The supplied Bun is for the target platform and therefore cannot be run on
+// the build host; the normal packer remains strict about the host's Bun.
+func PackJellytoolPluginsFor(ctx context.Context, bun, resources, goos, goarch string) error {
+	return packJellytoolPlugins(ctx, bun, resources, goos, goarch, false)
+}
+
+func packJellytoolPlugins(ctx context.Context, bun, resources, goos, goarch string, verifyBun bool) error {
 	if !filepath.IsAbs(bun) || !filepath.IsAbs(resources) {
 		return errors.New("Jellytool bundle paths must be absolute")
 	}
-	out, err := proc.CommandContext(ctx, bun, "--version").Output()
-	if err != nil || strings.TrimSpace(string(out)) != BunVersion {
-		return fmt.Errorf("Jellytool requires bundled Bun %s", BunVersion)
+	if goos != "darwin" && goos != "linux" && goos != "windows" || goarch != "amd64" && goarch != "arm64" {
+		return errors.New("Jellytool target must be darwin, linux or windows with amd64 or arm64")
+	}
+	if verifyBun {
+		out, err := proc.CommandContext(ctx, bun, "--version").Output()
+		if err != nil || strings.TrimSpace(string(out)) != BunVersion {
+			return fmt.Errorf("Jellytool requires bundled Bun %s", BunVersion)
+		}
 	}
 	if err := os.MkdirAll(resources, 0o700); err != nil {
 		return err
@@ -65,7 +81,11 @@ func PackJellytoolPlugins(ctx context.Context, bun, resources string) error {
 		return err
 	}
 	defer src.Close()
-	dst, err := os.OpenFile(filepath.Join(resources, bunExe()), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o700)
+	bunName := "bun"
+	if goos == "windows" {
+		bunName = "bun.exe"
+	}
+	dst, err := os.OpenFile(filepath.Join(resources, bunName), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o700)
 	if err != nil {
 		return err
 	}
@@ -74,11 +94,11 @@ func PackJellytoolPlugins(ctx context.Context, bun, resources string) error {
 	if err := errors.Join(copyErr, closeErr); err != nil {
 		return err
 	}
-	sum, err := jellytoolFileSum(filepath.Join(resources, bunExe()))
+	sum, err := jellytoolFileSum(filepath.Join(resources, bunName))
 	if err != nil {
 		return err
 	}
-	lock, _ := json.MarshalIndent(jellytoolRuntimeLock{BunVersion, runtime.GOOS, runtime.GOARCH, sum}, "", "  ")
+	lock, _ := json.MarshalIndent(jellytoolRuntimeLock{BunVersion, goos, goarch, sum}, "", "  ")
 	return os.WriteFile(filepath.Join(resources, "runtime-lock.json"), append(lock, '\n'), 0o600)
 }
 

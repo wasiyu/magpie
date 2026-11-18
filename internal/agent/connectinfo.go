@@ -144,7 +144,7 @@ func (a *Agent) startsWith() (pats []string, files []string, reads func() string
 // the sign-in (deskList).
 func codexLists(path string) (list, desk string) {
 	dir := filepath.Dir(path)
-	return filepath.Join(dir, "magpie-models.json"), filepath.Join(dir, "magpie-desktop-models.json")
+	return filepath.Join(dir, codexProviderID+"-models.json"), filepath.Join(dir, codexProviderID+"-desktop-models.json")
 }
 
 // codexWiring writes where Codex's config sends it, as magpie writes it:
@@ -154,7 +154,7 @@ func codexWiring(b *strings.Builder, path string) {
 		v, _ := edit.GetTOMLTop(path, k)
 		b.WriteString(k + "=" + v + "\n")
 	}
-	t, _ := edit.GetTOMLTable(path, "model_providers."+magpieID)
+	t, _ := edit.GetTOMLTable(path, "model_providers."+codexProviderID)
 	j, _ := json.Marshal(t)
 	b.Write(j)
 }

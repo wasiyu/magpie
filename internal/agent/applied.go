@@ -17,6 +17,7 @@ import (
 	"github.com/yetone/magpie/internal/filememo"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/lastgood"
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/usage"
 )
@@ -592,6 +593,9 @@ func (a *Agent) handWired() bool { return a.Native == nil && a.Spelled != nil &&
 // as its provider). A model on a provider of the agent's own config named
 // magpie counts only where magpie set the agent up (handWired).
 func (a *Agent) Wired() bool {
+	if product.Jellytool && (a.ID == "codex" || strings.HasPrefix(a.ID, "codex@")) && codexPeerActive(a.Path, codexKeptGateway(a.Path)+"/v1") {
+		return false
+	}
 	if a.Native != nil {
 		return a.Native.Read().Provider == "connected"
 	}

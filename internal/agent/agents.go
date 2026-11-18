@@ -122,6 +122,9 @@ func codexAppRoute() (route string, out, known bool) {
 	defer filememo.Hold()()
 	home, _ := homes()
 	a := codex(home)
+	if product.Jellytool && codexPeerActive(a.Path, codexKeptGateway(a.Path)+"/v1") {
+		return "", false, false
+	}
 	// opened, not read: a config.toml of 1.5 MB (Codex keeps every
 	// project's trust level in it) read whole every 3s was 1.55 GB of a
 	// live magpie's 33 GB in 53 minutes; the keys below come from filememo
@@ -140,7 +143,7 @@ func codexAppRoute() (route string, out, known bool) {
 		}
 		b.WriteString(k + "=" + v + "\n")
 	}
-	t, _ := edit.GetTOMLTable(a.Path, "model_providers."+magpieID)
+	t, _ := edit.GetTOMLTable(a.Path, "model_providers."+codexProviderID)
 	b.WriteString("magpie.base_url=" + t["base_url"] + "\n")
 	// and, while magpie's table is Codex's provider, whether it requires
 	// OpenAI auth, which decides whether the app has its ChatGPT account

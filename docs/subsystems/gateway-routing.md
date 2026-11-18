@@ -3644,15 +3644,29 @@ never read real providers or accounts.
 
 ## Jellytool build
 
-The independent application uses
-[`ServeJellytool` and `JellytoolFront`](../../internal/gateway/jellytool.go),
-not ListenAndServe. It owns a fixed loopback listener at 127.0.0.1:3435 and
-never probes or takes another process's gateway. Only GET /v1/models and
-POST /v1/chat/completions, /v1/responses and /v1/messages reach the original
-request stack, including its Host/Origin guards. Management, profiling, MCP,
-subscription backend and alternate paths are rejected outside that stack.
-No WhileServing task, account refresh, updater, warmup, check-in or WSL
-listener is started. Providers are restricted to the bundled Jellytoken
-plugin and routing groups are absent. Ordinary builds retain the behavior
-above. See [Jellytool P1](../plans/jellytool-plugin-p1.md) for evidence and
-compatibility limits.
+The current [`RunJellytool`](../../internal/gui/jellytool_app.go) starts the
+shared [`startBackend`](../../internal/gui/backend.go), which serves
+`ListenAndServe` and [`Front`](../../internal/gateway/oneport.go), with
+Jellytool's product identity, data root and default loopback port 3435.
+It uses the normal gateway, plugin host and feature set described above.
+The restricted `ServeJellytool` / `JellytoolFront` remain legacy entry points;
+the earlier restricted application is documented in [Jellytool P1](../plans/jellytool-plugin-p1.md).
+
+In a Jellytool build, `Front` applies the WorkBuddy Responses compatibility
+writer after its normal network guards. For WorkBuddy requests to Responses,
+numeric input/output token details stay in place; nested objects and other
+non-numeric vendor extensions move to collision-safe sibling `_extra` fields.
+Both whole JSON replies and SSE events use this path, including completed
+responses. Other clients and ordinary Magpie builds keep their original usage
+payloads. The original upstream usage still reaches gateway accounting before
+the client-facing adaptation. SSE comments, including single-line heartbeats,
+are forwarded immediately, even between an event's fields; partial data lines
+remain buffered until the event can be normalized. The writer unwraps to the
+underlying connection so request-body read deadlines still apply and are cleared
+before generation. `TestWorkBuddyResponsesWriterKeepsCommentsLive` covers split
+LF/CRLF heartbeats and normalization after them;
+`TestWorkBuddyResponsesWriterPreservesReadDeadlines` covers body deadlines.
+See
+[`jellytool_responses_workbuddy.go`](../../internal/gateway/jellytool_responses_workbuddy.go)
+and `TestWorkBuddyResponsesThroughCurrentGateway`, which exercises the actual
+HTTP `Front` with the observed WorkBuddy User-Agent in both product builds.

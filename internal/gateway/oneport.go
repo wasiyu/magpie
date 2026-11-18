@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"path"
 	"strings"
+
+	"github.com/yetone/magpie/internal/product"
 )
 
 // Front is what the gateway's own listener serves: Handler behind
@@ -16,7 +18,18 @@ func (s *Server) Front() http.Handler {
 	// the goroutine dump ahead of lanGuard too, whose allow list reads
 	// settings.json under its lock (dumpFirst)
 	// (socketEntry: a socket's turns go through all of it again)
-	s.frontOnce.Do(func() { s.front = socketEntry(s.dumpFirst(lanGuard(s.Handler()))) })
+	s.frontOnce.Do(func() {
+		handler := s.Handler()
+		if product.Jellytool {
+			// Jellytool uses this shared backend: WorkBuddy's Responses
+			// replies are normalized on the way out
+			next := handler
+			handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				writeWorkBuddyResponsesThrough(w, r, next)
+			})
+		}
+		s.front = socketEntry(s.dumpFirst(lanGuard(handler)))
+	})
 	return s.front
 }
 

@@ -52,7 +52,8 @@ func TestJellytoolActiveAdapter(t *testing.T) {
 		t.Fatal("already active")
 	}
 	defer p.Close()
-	// A malicious generic plugin registry must never replace this host.
+	// The shared backend may load ordinary plugins too. Keep this test's
+	// listings on the private adapter: the generic registry cannot replace it.
 	if err := os.MkdirAll(filepath.Dir(ListPath()), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +63,7 @@ func TestJellytoolActiveAdapter(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(data, "plugins.json"), []byte(`{"plugins":[{"spec":"evil"}]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := APIKey(ctx, "other", 0, nil, "fixture-key", NewAccount); err == nil {
+	if _, err := jellytoolAPIKey(ctx, "other", 0, "fixture-key"); err == nil {
 		t.Fatal("other provider admitted")
 	}
 	saved, err := APIKey(ctx, "jellytoken", 0, nil, "fixture-key", NewAccount)
@@ -79,7 +80,7 @@ func TestJellytoolActiveAdapter(t *testing.T) {
 	if err != nil || !opts.Fetch {
 		t.Fatal(opts, err)
 	}
-	if ps := Cached(); len(ps) != 1 || ps[0].ID != "jellytoken" || len(ps[0].Models) != 1 {
+	if ps := jellytoolCached(); len(ps) != 1 || ps[0].ID != "jellytoken" || len(ps[0].Models) != 1 {
 		t.Fatal(ps)
 	}
 	response, err := Fetch(ctx, FetchRequest{Provider: "jellytoken", Account: "jellytoken", Model: "vendor/literal.v1:exact", NPM: "@ai-sdk/openai-compatible", URL: srv.URL + "/v1/chat/completions", Method: "POST", Body: []byte(`{"model":"vendor/literal.v1:exact"}`)})
@@ -92,7 +93,7 @@ func TestJellytoolActiveAdapter(t *testing.T) {
 		t.Fatal(string(b), err)
 	}
 	for _, method := range []string{"init", "reload", "apiKey", "authorize", "callback", "tools", "checkin"} {
-		if err := Call(ctx, method, map[string]any{}, nil); err == nil {
+		if err := Call(ctx, method, map[string]any{"provider": "jellytoken"}, nil); err == nil {
 			t.Errorf("arbitrary %s admitted", method)
 		}
 	}
@@ -106,34 +107,34 @@ func TestJellytoolActiveAdapter(t *testing.T) {
 	}
 
 	catalogDenied.Store(true)
-	if _, err := Providers(ctx); err != nil {
+	if _, err := refreshJellytool(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if ps := Cached(); len(ps) != 1 || len(ps[0].Models) != 0 || ps[0].ListError == "" {
+	if ps := jellytoolCached(); len(ps) != 1 || len(ps[0].Models) != 0 || ps[0].ListError == "" {
 		t.Fatalf("failed permission read retained models: %+v", ps)
 	}
 	// Replacing a key while its catalog is denied cannot reuse the old catalog.
 	if _, err := APIKey(ctx, "jellytoken", 0, nil, "fixture-key", NewAccount); err == nil {
 		t.Fatal("a refused candidate key was saved")
 	}
-	if ps := Cached(); len(ps) != 1 || len(ps[0].Models) != 0 {
+	if ps := jellytoolCached(); len(ps) != 1 || len(ps[0].Models) != 0 {
 		t.Fatalf("replacement key inherited models: %+v", ps)
 	}
 	catalogDenied.Store(false)
-	if _, err := Providers(ctx); err != nil {
+	if _, err := refreshJellytool(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if ps := Cached(); len(ps) != 1 || len(ps[0].Models) != 1 {
+	if ps := jellytoolCached(); len(ps) != 1 || len(ps[0].Models) != 1 {
 		t.Fatalf("retry did not recover catalog: %+v", ps)
 	}
 	if err := SignOut(ctx, "jellytoken", "jellytoken"); err != nil {
 		t.Fatal(err)
 	}
-	if ps := Cached(); len(ps) != 1 || ps[0].SignedIn {
+	if ps := jellytoolCached(); len(ps) != 1 || ps[0].SignedIn {
 		t.Fatalf("sign-out retained the bundled account: %+v", ps)
 	}
 	p.Close()
-	if _, err := get(ctx); err == nil {
+	if _, err := jellytoolHost(); err == nil {
 		t.Fatal("closed host was silently replaced")
 	}
 }

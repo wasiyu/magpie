@@ -69,7 +69,7 @@ func ConnectCodexTwins() {
 // over without being asked.
 func codexTwinHasOwn(at place) bool {
 	path := filepath.Join(at.codexHome(), "config.toml")
-	if p, _ := edit.GetTOMLTop(path, "model_provider"); p != "" && p != magpieID {
+	if p, _ := edit.GetTOMLTop(path, "model_provider"); p != "" && p != codexProviderID {
 		return true
 	}
 	if u, _ := edit.GetTOMLTop(path, "openai_base_url"); u != "" && !strings.Contains(u, "/backend-api/codex") {

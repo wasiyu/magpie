@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 
 LSAPPINFO = "/usr/bin/lsappinfo"
+LSREGISTER = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 TERM_WAIT = 5.0  # seconds a Jellytool gets to quit on SIGTERM
 LOCK_WAIT = 5.0  # seconds to wait for the instance lock to be released
@@ -37,6 +38,16 @@ STABLE_WAIT = 1.0  # the ready process must remain alive through this interval
 def die(message: str):
     print(f"launch: {message}", file=sys.stderr)
     raise SystemExit(1)
+
+
+def unregister(app: Path) -> None:
+    result = subprocess.run(
+        [LSREGISTER, "-u", str(app)], capture_output=True, text=True, timeout=10,
+    )
+    # Never-launched .noindex bundles have no LaunchServices entry (-10814).
+    if result.returncode == 1 and re.search(r": -10814(?:\n from spotlight)?\s*$", result.stderr):
+        return
+    result.check_returncode()
 
 
 def bundle_id(app: Path) -> str:
