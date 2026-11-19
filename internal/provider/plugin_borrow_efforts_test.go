@@ -31,6 +31,10 @@ func TestPluginThinkingModelBorrowsEfforts(t *testing.T) {
 	    "reasoning_options":[{"type":"effort","values":["low","high","max"]}],"limit":{"context":1000000}}}}}`), 0o644)
 	catalog.Reset()
 	t.Cleanup(catalog.Reset)
+	jelly := pluginCatalog(plugin.Provider{ID: "jellytoken", Models: []plugin.Model{{ID: "kimi-k3", Outputs: []string{"text"}}}})
+	if len(jelly) != 1 || !slices.Equal(jelly[0].Efforts, []string{"low", "medium", "high", "max"}) {
+		t.Fatalf("Jellytoken effort levels: %v", jelly)
+	}
 	spec := "@magpie-community/opencode-raccoon-auth"
 	write := func(name string, v any) {
 		t.Helper()

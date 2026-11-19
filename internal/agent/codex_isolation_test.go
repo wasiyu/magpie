@@ -144,28 +144,41 @@ func TestCodexIsolationJellytoolWithChatGPT(t *testing.T) {
 	}
 	home, read := codexHome(t, `{"tokens":{"access_token":"x","id_token":"x.e30.x"}}`, "model = \"gpt-5.5\"\n")
 	cx := codex(home)
+	if joined, err := cx.Join(); err != nil || !joined {
+		t.Fatalf("join beside subscription: %v, %v", joined, err)
+	}
 	if err := cx.Field("model").Set("fake/m1"); err != nil {
 		t.Fatal(err)
 	}
 	if err := cx.Sync(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(read(), `model_provider = "jellytool"`) || strings.Contains(read(), "openai_base_url") {
+	if strings.Contains(read(), `model_provider = "jellytool"`) || !strings.Contains(read(), codexGatewayURL()) {
 		t.Fatal(read())
 	}
 	tb, _ := edit.GetTOMLTable(cx.Path, "model_providers.jellytool")
 	if tb["requires_openai_auth"] != "true" {
 		t.Fatal("ChatGPT sign-in lost")
 	}
-	if cx.Field("login").Get() != "api" {
+	if cx.Field("login").Get() == "api" {
 		t.Fatal("incorrect sign-in display")
 	}
-	before := read()
-	if err := cx.Field("login").Set("chatgpt"); err == nil {
-		t.Fatal("offered incompatible sign-in mode")
+	if err := cx.Field("model").Set("gpt-5.5"); err != nil || !cx.Wired() {
+		t.Fatalf("subscription pick lost connection: %v, %s", err, read())
 	}
-	if read() != before {
-		t.Fatal("rejected mode changed config")
+}
+
+func TestCodexIsolationUpgradeSubscription(t *testing.T) {
+	home, read := codexHome(t, `{"tokens":{"access_token":"x","id_token":"x.e30.x"}}`, "model_provider = \"jellytool\"\nmodel = \"fake/m1\"\nmodel_catalog_json = \"jellytool-models.json\"\n[model_providers.jellytool]\nbase_url = " + quoteTOML(gateway.URL()+"/v1") + "\n")
+	cx := codex(home)
+	if err := edit.SetTOMLTop(cx.Path, edit.KV{Path: "openai_base_url", Value: codexGatewayURL()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cx.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if !cx.Beside() || !strings.Contains(read(), `model = "fake/m1"`) {
+		t.Fatal(read())
 	}
 }
 

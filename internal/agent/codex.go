@@ -271,7 +271,7 @@ func codexIn(at place) *Agent {
 	path := filepath.Join(dir, "config.toml")
 	catalogPath := filepath.Join(dir, codexProviderID+"-models.json")
 	get := func(k string) string { v, _ := edit.GetTOMLTop(path, k); return v }
-	peerActive := func() bool { return product.Jellytool && codexPeerActive(path, at.v1()) }
+	peerActive := func() bool { return codexPeerActive(path, at.v1()) }
 	isolated := func() bool { return product.Jellytool }
 	// this machine's Codex reaches the gateway at the address its config
 	// gives, when that is magpie's on another host: the Codex app on
@@ -1819,6 +1819,9 @@ func codexIn(at place) *Agent {
 	}
 	set := func(v string) error {
 		if v == "" {
+			if peerActive() {
+				return nil
+			}
 			// a stray table of an older magpie's goes with a Disconnect
 			// too, an uninstall's or a quit's: no Sync may come after
 			if err := tidyTables(); err != nil {
@@ -1887,7 +1890,7 @@ func codexIn(at place) *Agent {
 			// put back.
 			p := get("model_provider")
 			ours := asProvider() || p == "" || p == "openai" || isCCSwitchMirror(p)
-			chatgpt := !isolated() && !api() && chatGPT()
+			chatgpt := !api() && chatGPT() && (!isolated() || !peerActive() && (get("openai_base_url") == "" || viaBase()))
 			if chatgpt && !outOn(v) && ours {
 				forget(at.key("codex.out"))
 				if err := dropProvider(); err != nil {
@@ -2051,7 +2054,7 @@ func codexIn(at place) *Agent {
 		// was on, the one last picked in its /model (the owner: 让 Codex 记住
 		// 上次的选择), and magpie's models join its list
 		Join: func() (bool, error) {
-			if isolated() || api() || !chatGPT() || out() || isMagpie(get("model")) {
+			if peerActive() || isolated() && get("openai_base_url") != "" && !viaBase() || api() || !chatGPT() || out() || isMagpie(get("model")) {
 				return false, nil
 			}
 			if p := get("model_provider"); p != "" && p != "openai" && !isCCSwitchMirror(p) {
@@ -2151,6 +2154,12 @@ func codexIn(at place) *Agent {
 		Sync: func() error {
 			if peerActive() {
 				return nil
+			}
+			if isolated() && asProvider() && ownCatalog(get("model_catalog_json")) && (get("openai_base_url") == "" || viaBase()) && !api() && chatGPT() && !out() && isMagpie(get("model")) {
+				table, _ := edit.GetTOMLTable(path, "model_providers."+codexProviderID)
+				if table["base_url"] == at.v1() && stashShared()[at.key("codex.provider")] == "" {
+					return set(get("model"))
+				}
 			}
 			// a table an older magpie wrote for another app's provider
 			// goes, wired or not: Codex refuses its config with it
@@ -2635,18 +2644,9 @@ func codexIn(at place) *Agent {
 				// leaves it.
 				Key: "login", Label: "sign-in", Quiet: true,
 				Get: func() string {
-					if isolated() {
-						return "api"
-					}
 					return stashShared()[at.key("codex.login")]
 				},
 				Set: func(v string) error {
-					if isolated() {
-						if v == "" || v == "api" {
-							return nil
-						}
-						return fmt.Errorf("%s uses a separate Codex provider while product isolation is enabled", product.Name)
-					}
 					if v != "" && v != "api" && v != "chatgpt" {
 						return fmt.Errorf("sign-in is api, chatgpt or empty (ChatGPT), not %q", v)
 					}
@@ -2667,9 +2667,6 @@ func codexIn(at place) *Agent {
 					return nil
 				},
 				Options: func(map[string]string) []Option {
-					if isolated() {
-						return []Option{{Value: "api", Label: product.Name + " API", Note: "Separate provider; other products keep their own connection settings"}}
-					}
 					return []Option{
 						{Value: "", Label: "ChatGPT", Note: "magpie's models join Codex's own; Codex stays signed in to ChatGPT, and while the Codex app blocks its account (out of allowance, no credits left) magpie is Codex's provider, so the app still sends"},
 						{Value: "chatgpt", Label: "Always ChatGPT", Note: "as ChatGPT, and kept so while the Codex app blocks its account: magpie never becomes Codex's provider. The Codex app may then send nothing till the account has room; Codex CLI goes on through magpie"},

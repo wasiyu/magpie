@@ -420,7 +420,8 @@ func pluginCatalog(pp plugin.Provider) []catalog.Model {
 		// (levelsUnknown) with nothing borrowed, so Codex had no effort to
 		// pick (laomao04_65777 on Discord); a custom provider's same id
 		// borrows them (effortsOf)
-		if len(c.Efforts) == 0 && (m.Reasoning || PluginServes(pp.ID) || pp.ID == "cline") {
+		jellytokenText := pp.ID == "jellytoken" && slices.Contains(m.Outputs, "text")
+		if len(c.Efforts) == 0 && (m.Reasoning || PluginServes(pp.ID) || pp.ID == "cline" || jellytokenText) {
 			c.Efforts, c.EffortsBorrowed = borrowedEfforts(m.ID), true
 		}
 		// OpenCode's price of a model it has none for is 0, as the

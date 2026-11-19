@@ -10,6 +10,17 @@ import (
 	"github.com/yetone/magpie/internal/edit"
 )
 
+func TestCodexMagpieLeavesActiveJellytoolAlone(t *testing.T) {
+	config := "model = \"fake/m1\"\nopenai_base_url = \"http://127.0.0.1:3435/backend-api/codex\"\n[model_providers.jellytool]\nbase_url = \"http://127.0.0.1:3435/v1\"\n"
+	home, read := codexHome(t, "", config)
+	client := codex(home)
+	for _, operation := range []func() error{client.Sync, client.Unwire, client.Disconnect} {
+		if err := operation(); err != nil || read() != config {
+			t.Fatalf("active Jellytool connection changed: %v, %s", err, read())
+		}
+	}
+}
+
 // A Jellytool table must not opt the upstream build into new wiring behavior.
 func TestCodexMagpieKeepsOriginalWiringBesideJellytool(t *testing.T) {
 	home, _ := codexHome(t, `{"tokens":{"access_token":"x","id_token":"x.e30.x"}}`,

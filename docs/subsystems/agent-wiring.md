@@ -545,14 +545,15 @@ names. This identity is scoped to Codex, not every client's protocol IDs.
 The implementation is in [`codex_isolation.go`](../../internal/agent/codex_isolation.go)
 and [`codex.go`](../../internal/agent/codex.go).
 
-The isolation implementation is compiled only with the `jellytool` build tag.
-The upstream Magpie build retains its original behavior even when a Jellytool
-provider table exists: no new lock, generated profile, ownership guard or
-sign-in mode is enabled for Magpie.
+Both builds check whether the peer owns the active connection before syncing
+or disconnecting. A saved provider table alone does not establish ownership.
 
-Jellytool connects as a separate provider even with a ChatGPT sign-in. It does
-not redirect OpenAI's global base URL, take over other provider tables, or
-relabel OpenAI history. Existing provider definitions stay for
+With a native ChatGPT sign-in, Jellytool connects through its local Codex
+backend URL. The CLI receives the subscription list together with the selected
+gateway models. The desktop picker receives that list in Jellytool's desktop
+catalog. API-key connections use the separate Jellytool provider. Sync can
+upgrade an older Jellytool provider when its endpoint and catalog match and
+the account can use its subscription. Existing provider definitions stay for
 resuming their threads. Background sync and disconnect leave a peer's active
 configuration alone, including when both serve the same model ID. Selecting
 a model explicitly may switch the top-level provider; disconnect restores the
