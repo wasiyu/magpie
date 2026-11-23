@@ -12,12 +12,12 @@ const infoEnd = source.indexOf("  const modelPurpose", infoStart);
 const modelBasicInfo = vm.runInNewContext("(" + source.slice(infoStart + "  const modelBasicInfo = ".length, infoEnd).trim().replace(/;$/, "") + ")");
 const tiers = (models, config = defaults) => JSON.parse(JSON.stringify(context.tiers(models.map((id) => typeof id === "string" ? { id, outputs: ["text"] } : id), new Map(), config)));
 const ids = (data, tier) => data[tier].map((m) => m.id);
-const auto = { version: 1, tiers: {} };
+const auto = { version: 2, tiers: {} };
 
-test("default configuration uses GPT-6 Astra/Luna and GPT-6.1 Sol/Terra, even without access", () => {
+test("default configuration uses GPT-6.2 Astra/Sol, GPT-6.1 Terra and GPT-6 Luna, even without access", () => {
   const data = tiers([]);
-  assert.deepEqual(ids(data, "complex"), ["gpt-6-astra"]);
-  assert.deepEqual(ids(data, "daily"), ["gpt-6.1-sol"]);
+  assert.deepEqual(ids(data, "complex"), ["gpt-6.2-astra"]);
+  assert.deepEqual(ids(data, "daily"), ["gpt-6.2-sol"]);
   assert.deepEqual(ids(data, "simple"), ["gpt-6.1-terra", "gpt-6-luna"]);
   assert(Object.values(data).flat().every((m) => m.recommended && m.alwaysShow));
 });
@@ -28,11 +28,11 @@ test("shipped recommendation models have distinct task summaries and Astra is id
     assert(descriptions.every(Boolean), `${tier} has a model without a task summary`);
     assert.equal(new Set(descriptions).size, descriptions.length, `${tier} repeats a task summary`);
   }
-  assert.match(modelBasicInfo["gpt-6-astra"], /flagship/i);
+  assert.match(modelBasicInfo["gpt-6.2-astra"], /flagship/i);
 });
 
 test("configured tiers can change IDs, ordering, tiers, names and recommendation markers", () => {
-  const data = tiers(["own-model", "glm-5.3"], { version: 1, tiers: {
+  const data = tiers(["own-model", "glm-5.3"], { version: 2, tiers: {
     complex: [{ id: "own-model", recommended: true, name: "My model" }],
     daily: [], simple: [{ id: "gpt-next", alwaysShow: true }]
   } });
@@ -44,15 +44,15 @@ test("configured tiers can change IDs, ordering, tiers, names and recommendation
 });
 
 test("a configured model needs catalog access to appear unless alwaysShow is set", () => {
-  assert.deepEqual(ids(tiers([], { version: 1, tiers: { complex: [{ id: "own-model" }] } }), "complex"), []);
+  assert.deepEqual(ids(tiers([], { version: 2, tiers: { complex: [{ id: "own-model" }] } }), "complex"), []);
   const models = [{ id: "own-model", outputs: ["text"], on: false }];
   const before = JSON.stringify(models);
-  assert.deepEqual(ids(tiers(models, { version: 1, tiers: { complex: [{ id: "own-model" }] } }), "complex"), ["own-model"]);
+  assert.deepEqual(ids(tiers(models, { version: 2, tiers: { complex: [{ id: "own-model" }] } }), "complex"), ["own-model"]);
   assert.equal(JSON.stringify(models), before);
 });
 
 test("omitted tiers use computed models and do not duplicate a model moved by configuration", () => {
-  const data = tiers(["glm-5.3", "deepseek-v4-pro", "deepseek-v4.1-flash"], { version: 1, tiers: { daily: [{ id: "deepseek-v4-pro" }] } });
+  const data = tiers(["glm-5.3", "deepseek-v4-pro", "deepseek-v4.1-flash"], { version: 2, tiers: { daily: [{ id: "deepseek-v4-pro" }] } });
   assert.deepEqual(ids(data, "complex"), ["glm-5.3"]);
   assert.deepEqual(ids(data, "daily"), ["deepseek-v4-pro"]);
 });
@@ -85,5 +85,34 @@ test("automatic DeepSeek picks the latest date within the latest model version r
     assert.deepEqual(ids(data, "daily"), ["deepseek-v4.1-flash-1017"]);
   }
   assert.deepEqual(ids(tiers(["deepseek-v4-pro"], auto), "complex"), ["deepseek-v4-pro"]);
-  assert.deepEqual(ids(tiers(models, { version: 1, tiers: { complex: [{ id: "deepseek-v4-pro-0423" }] } }), "complex"), ["deepseek-v4-pro-0423"], "an explicitly configured ID stays pinned");
+  assert.deepEqual(ids(tiers(models, { version: 2, tiers: { complex: [{ id: "deepseek-v4-pro-0423" }] } }), "complex"), ["deepseek-v4-pro-0423"], "an explicitly configured ID stays pinned");
+});
+
+test("default GPT picks follow the newest version of their role the key lists", () => {
+  const data = tiers(["gpt-6.2-astra", "gpt-6.3-astra", "gpt-6.10-sol", "gpt-6.9-sol", "gpt-6.2-terra", "gpt-7-luna", "gpt-6-luna"]);
+  assert.deepEqual(ids(data, "complex")[0], "gpt-6.3-astra");
+  assert.deepEqual(ids(data, "daily")[0], "gpt-6.10-sol");
+  assert.deepEqual(ids(data, "simple").slice(0, 2), ["gpt-6.2-terra", "gpt-7-luna"]);
+  assert(Object.values(data).flat().filter((m) => /^gpt-/.test(m.id)).every((m) => m.recommended && m.alwaysShow), "a followed pick keeps its markers");
+  assert.equal(Object.values(data).flat().filter((m) => /^gpt-/.test(m.id)).length, 4, "older versions of a followed role are not shown beside it");
+});
+
+test("a followed GPT role with nothing listed shows the configured id, and a lower listed version is used", () => {
+  assert.deepEqual(ids(tiers(["glm-5.3"]), "complex")[0], "gpt-6.2-astra");
+  assert.deepEqual(ids(tiers(["gpt-6.1-sol"]), "daily")[0], "gpt-6.1-sol");
+  const own = { version: 2, tiers: { complex: [{ id: "gpt-6.2-astra", latest: "astra" }] } };
+  assert.deepEqual(ids(tiers(["glm-5.3"], own), "complex"), [], "without alwaysShow an unlisted role shows nothing");
+  assert.deepEqual(ids(tiers(["gpt-6.3-astra"], own), "complex"), ["gpt-6.3-astra"]);
+});
+
+test("a pinned GPT id without latest stays pinned", () => {
+  const pinned = { version: 2, tiers: { complex: [{ id: "gpt-6.2-astra", alwaysShow: true }] } };
+  assert.deepEqual(ids(tiers(["gpt-6.2-astra", "gpt-6.3-astra"], pinned), "complex"), ["gpt-6.2-astra"]);
+});
+
+test("an automatic tier does not repeat the model a followed pick resolved to", () => {
+  const config = { version: 2, tiers: { complex: [{ id: "gpt-6.2-sol", latest: "sol" }] } };
+  const data = tiers(["gpt-6.3-sol", "glm-5.3-flash"], config);
+  assert.deepEqual(ids(data, "complex"), ["gpt-6.3-sol"]);
+  assert.deepEqual(ids(data, "daily"), ["glm-5.3-flash"]);
 });

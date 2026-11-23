@@ -10,8 +10,9 @@
    已有 Key 可以直接填写。验证失败时不会替换已保存的 Key。
 2. 点击“选择模型”，在快速上手第 2 步展开三类推荐：解决复杂问题、日常工作与编码、
    简单任务。每张卡片显示模型名称、简短用途和右上角勾选框；点击卡片选择或取消。
-   GPT 默认固定展示并标记“推荐”：gpt-6-astra 用于解决复杂问题，gpt-6.1-sol 用于日常工作与编码，
-   gpt-6.1-terra 和 gpt-6-luna 用于简单任务。没有权限的型号仍会显示，点击时提示先在 Jellytoken 开通模型权限；
+   GPT 默认固定展示并标记“推荐”：Astra 用于解决复杂问题，Sol 用于日常工作与编码，
+   Terra 和 Luna 用于简单任务，每种都显示当前 Key 目录里版本最高的型号；目录里没有该型号时
+   显示 gpt-6.2-astra、gpt-6.2-sol、gpt-6.1-terra、gpt-6-luna。没有权限的型号仍会显示，点击时提示先在 Jellytoken 开通模型权限；
    权限只以当前 Key 的接口模型目录为准，不以历史选择判断。分类按钮统一显示“全选可用模型”，
    选中全部可用型号后显示“清空”；跳过无权限型号时会提示。目录读取失败时提示刷新重试。
    其他系列在每档保留一个代表，MiniMax 不再出现在推荐中，
@@ -155,12 +156,15 @@
 ## 修改模型推荐配置
 
 配置位于 Jellytool 数据目录的 `model-recommendations.json`，通常为
-`~/.config/jellytool/model-recommendations.json`。首次启动会创建文件，更新程序不会覆盖它。
+`~/.config/jellytool/model-recommendations.json`。首次启动会创建文件。安装新版时，旧版 `version: 1` 配置会换成新版推荐配置，原文件另存为
+`model-recommendations.json.v1.bak`；`version: 2` 配置会保留。
 修改后刷新页面或重启 Jellytool 生效。JSON 写错时，推荐区域会报错，原文件会保留。
 
 - `tiers.complex`：解决复杂问题；`tiers.daily`：日常工作与编码；`tiers.simple`：简单任务。
 - 每个数组按显示顺序列出模型。`id` 必须与接口中的完整型号一致。
 - `recommended: true` 显示“★ 推荐”；`alwaysShow: true` 在没有权限时仍展示卡片，点击时提示开通权限。
+- `latest: "astra"`（或 `sol`、`terra`、`luna`）让该条目跟随目录里该 GPT 型号的最高版本，
+  `id` 只在目录里一个都没有时显示；去掉 `latest` 则固定为 `id` 这一个版本。
 - 可加 `name` 自定义显示名；移动条目到另一个档位可调整分档，删除条目可取消推荐。
 - 将某档设为 `[]` 可隐藏该档模型；删除该档位字段则恢复自动计算。配置不改变接口权限和已保存选集。
 

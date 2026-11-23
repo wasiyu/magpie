@@ -273,15 +273,18 @@
     const result = { complex: take(complex, "high"), daily: take(daily, "standard"), simple: take(simple, "low") };
     // A configured tier replaces that tier's computed result, retaining order.
     // Configuration controls presentation; the API catalog still controls access.
+    // A pick with `latest` (a GPT role) shows the newest gpt-*-<role> this key
+    // lists; its `id` is only the card shown when the key lists none.
+    const configured = new Set();
     for (const tier of ["complex", "daily", "simple"]) {
-      if (config?.tiers && Object.hasOwn(config.tiers, tier)) {
-        result[tier] = config.tiers[tier].flatMap((pick) => {
-          const listed = text.find((m) => m.id === pick.id);
-          return listed || pick.alwaysShow ? [{ ...listed, ...pick, priceTier: by(pick.id) }] : [];
-        });
-      }
+      if (!config?.tiers || !Object.hasOwn(config.tiers, tier)) continue;
+      result[tier] = config.tiers[tier].flatMap((pick) => {
+        const id = (pick.latest && gpt.find((m) => m.role === String(pick.latest).toLowerCase())?.id) || pick.id;
+        const listed = text.find((m) => m.id === id);
+        configured.add(pick.id).add(id);
+        return listed || pick.alwaysShow ? [{ ...listed, ...pick, id, priceTier: by(id) }] : [];
+      });
     }
-    const configured = new Set(Object.values(config?.tiers || {}).flat().map((m) => m.id));
     for (const tier of ["complex", "daily", "simple"]) {
       if (!Object.hasOwn(config?.tiers || {}, tier)) result[tier] = result[tier].filter((m) => !configured.has(m.id));
     }
@@ -298,7 +301,11 @@
   // Condensed from Jellytoken model-market Basic information (desc/remark),
   // reviewed 2026-11-10/11. Shipped IDs without public detail use neutral,
   // task-focused copy. Match exact IDs; never substitute another release.
+  // The gpt-6.2 entries repeat their gpt-6 / gpt-6.1 predecessors' copy and
+  // still need checking against Jellytoken's own page for 6.2.
   const modelBasicInfo = {
+    "gpt-6.2-astra": "OpenAI's flagship model for advanced reasoning, complex coding and long-horizon agent work.",
+    "gpt-6.2-sol": "A balanced workhorse for writing, coding, debugging and multi-step collaboration.",
     "gpt-6-astra": "OpenAI's flagship model for advanced reasoning, complex coding and long-horizon agent work.",
     "gpt-6.1-sol": "A balanced workhorse for writing, coding, debugging and multi-step collaboration.",
     "gpt-6.1-terra": "A practical low-cost model for quick questions, rewriting and routine document tasks.",

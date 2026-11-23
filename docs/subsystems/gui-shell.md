@@ -1721,7 +1721,9 @@ an opaque accent background, contrasting text and a star.
 
 The [configuration reader](../../internal/gui/jellytool_model_config.go) uses default results stored in [`jellytool-models.json`](../../internal/gui/assets/jellytool-models.json).
 On first startup, Jellytool copies them atomically to `model-recommendations.json`
-in `appdir.Config()`; existing files, even malformed ones, are never replaced.
+in `appdir.Config()`. A readable `version: 1` file from an older release is
+saved as `model-recommendations.json.v1.bak` and replaced by the shipped
+defaults; any other existing file, a malformed one included, is never replaced.
 `GET /jellytool-model-config.js` validates and serves that file without caching,
 before `jellytool.js`. Reloading the page reads edits. Invalid JSON, unknown
 fields/tiers and duplicate model IDs produce a visible configuration error,
@@ -1729,13 +1731,17 @@ without falling back over the user's changes. This file controls display alone.
 
 Each configured `tiers.complex` / `daily` / `simple` array replaces that tier's
 calculated result in the given order. Entries accept exact `id`, optional `name`,
-`recommended` and `alwaysShow`. `alwaysShow` displays a card without catalog
+`recommended`, `alwaysShow` and `latest`. `latest` (`astra`, `sol`, `terra` or
+`luna`, once each) shows the newest `gpt-<version>-<role>` the key's catalog
+lists, compared numerically per segment; its `id` must be a GPT model of that
+role and is the card shown when the catalog lists none. The shipped GPT entries
+all carry `latest`. `alwaysShow` displays a card without catalog
 access; selecting it still needs access. An empty array hides that tier's cards;
 omitting the tier restores automatic calculation. Configured IDs are removed
 from automatically calculated tiers, allowing a model to be moved without
 appearing twice. Automatic matching covers GPT, GLM, Qwen, Doubao Seed, Kimi and
 DeepSeek, retains both GPT simple roles, and excludes MiniMax. The shipped file
-contains the current calculated baseline with GPT's corrected exact IDs and
+contains the current calculated baseline, GPT's fallback IDs and
 DeepSeek V4 Pro `-0813` / V4.1 Flash `-1017`. Automatic DeepSeek matching compares
 numeric model versions first, then prefers a dated `-MMDD` variant over an
 undated one and the latest date within that version. Explicit configured IDs

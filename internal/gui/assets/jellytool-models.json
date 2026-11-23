@@ -1,9 +1,10 @@
 {
-  "version": 1,
+  "version": 2,
   "tiers": {
     "complex": [
       {
-        "id": "gpt-6-astra",
+        "latest": "astra",
+        "id": "gpt-6.2-astra",
         "recommended": true,
         "alwaysShow": true
       },
@@ -25,7 +26,8 @@
     ],
     "daily": [
       {
-        "id": "gpt-6.1-sol",
+        "latest": "sol",
+        "id": "gpt-6.2-sol",
         "recommended": true,
         "alwaysShow": true
       },
@@ -44,11 +46,13 @@
     ],
     "simple": [
       {
+        "latest": "terra",
         "id": "gpt-6.1-terra",
         "recommended": true,
         "alwaysShow": true
       },
       {
+        "latest": "luna",
         "id": "gpt-6-luna",
         "recommended": true,
         "alwaysShow": true
