@@ -1778,7 +1778,7 @@ working Go from PATH or local mise installations, and Bun 1.4.2 from the install
 app, previous Jellytool bundles or PATH (`--go` and `--bun` override discovery). It downloads
 no runtime and changes no global tool configuration. Each invocation builds a
 fresh staging bundle in a `.noindex` folder under `~/.cache/jellytool-build/artifacts/`, copies the
-completed bundle to `~/Applications/Jellytool.app`, and launches that fixed
+completed bundle to `/Applications/Jellytool.app`, and launches that fixed
 copy. Only after `package.py` succeeds does it install and call `launch.py`, so
 a failed build leaves the running application alone. Only the installed bundle
 is launched and registered; the build source is explicitly unregistered after
@@ -1786,6 +1786,9 @@ successful launch. Temporary install folders are hidden and end in `.noindex`,
 so retained build and rollback copies do not produce extra Spotlight app icons.
 An exported `.app` unpacked elsewhere remains a separate user-managed copy;
 updates should go through this command rather than opening every exported build.
+The developer installer uses the same `/Applications/Jellytool.app` path as the
+DMG. It stops if the old user-level `~/Applications/Jellytool.app` exists, so
+the two installation methods cannot create parallel Applications entries.
 
 A per-installation file lock covers replacement through native readiness.
 Before replacement, after copying succeeds, `background_processes` inspects

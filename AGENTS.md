@@ -26,13 +26,13 @@ Build and update the local Jellytool through
 python3 build/jellytool/run.py
 ```
 
-This installs and launches only `~/Applications/Jellytool.app`, keeps staging
+This installs and launches only `/Applications/Jellytool.app`, keeps staging
 bundles in `.noindex` folders, and ends old image MCP connections after copying
 succeeds. Reconnect those clients after the update (Claude `/mcp`; WorkBuddy
 `jellytool-image` off/on). Do not export every development build to Downloads
 or open its cached bundle: those copies can create duplicate app icons.
 To reopen the installed app without rebuilding, use
-`python3 build/jellytool/launch.py ~/Applications/Jellytool.app`.
+`python3 build/jellytool/launch.py /Applications/Jellytool.app`.
 Directly launching another bundle is for an intentional portable build or an
 isolated verification, not the normal update path.
 

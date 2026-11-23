@@ -17,6 +17,22 @@ launcher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(launcher)
 
 LSREGISTER = launcher.LSREGISTER
+REAL_HOME = Path.home()
+
+
+def install_dir():
+    # Tests replace Path.home with an isolated home. Production always uses
+    # the same directory as the DMG's Applications shortcut.
+    return Path("/Applications") if Path.home() == REAL_HOME else Path.home() / "Applications"
+
+
+def check_install_location():
+    user_app = Path.home() / "Applications" / "Jellytool.app"
+    if install_dir() == Path("/Applications") and (user_app.exists() or user_app.is_symlink()):
+        raise RuntimeError(
+            f"Jellytool already has an entry at {user_app}. Move it out of Applications "
+            "before using this installer, which installs to /Applications/Jellytool.app."
+        )
 
 
 def background_processes(target):
@@ -81,7 +97,7 @@ def executable(candidates, version_args, expected=None):
 
 def install_app(app, start=None):
     """Keep the old bundle until the fixed-location replacement is verified."""
-    applications = Path.home() / "Applications"
+    applications = install_dir()
     applications.mkdir(parents=True, exist_ok=True)
     target = applications / "Jellytool.app"
     with (applications / ".jellytool-update.lock").open("a+") as guard:
@@ -89,6 +105,7 @@ def install_app(app, start=None):
             fcntl.flock(guard, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise RuntimeError("another Jellytool update is already in progress") from None
+        check_install_location()
         return replace_app(app, target, start)
 
 
@@ -155,6 +172,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if sys.platform != "darwin":
         parser.error("this command requires macOS")
+    check_install_location()
     root = Path(__file__).resolve().parents[2]
     artifacts = Path.home() / ".cache/jellytool-build/artifacts"
     mise = Path.home() / ".local/share/mise/installs/go"

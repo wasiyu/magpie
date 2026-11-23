@@ -18,6 +18,17 @@ spec.loader.exec_module(runner)
 
 
 class RunTests(unittest.TestCase):
+    def setUp(self):
+        self.folder = self.enterContext(tempfile.TemporaryDirectory())
+
+    def test_system_install_blocks_developer_install(self):
+        user_app = Path(self.folder) / "Applications" / "Jellytool.app"
+        user_app.mkdir(parents=True)
+        with patch.object(runner.Path, "home", return_value=Path(self.folder)), patch.object(runner, "install_dir", return_value=Path("/Applications")), patch.object(runner.sys, "platform", "darwin"), patch.object(runner, "executable") as discover:
+            with self.assertRaisesRegex(RuntimeError, "already has an entry"):
+                runner.main([])
+            discover.assert_not_called()
+
     def bundle(self, root, name, content):
         app = root / name / "Jellytool.app"
         executable = app / "Contents/MacOS/jellytool"

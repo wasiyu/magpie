@@ -58,7 +58,7 @@ func runsHere(cmd string) bool {
 }
 
 // staleJellytoolDevPath is a local development bundle that run.py replaced
-// with the stable ~/Applications/Jellytool.app copy. It is safe to migrate
+// with the stable /Applications/Jellytool.app copy. It is safe to migrate
 // these paths; an installed app or another local build remains the user's
 // choice.
 func staleJellytoolDevPath(cmd string) bool {
