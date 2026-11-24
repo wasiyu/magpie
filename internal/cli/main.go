@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/yetone/magpie/internal/coderun"
 	"github.com/yetone/magpie/internal/product"
 	"os"
 	"slices"
@@ -103,7 +104,7 @@ const usage = `magpie — one place to pick every agent's model
                                   or only the models ticked for it, a new one off until it is ticked
   magpie search [add <api> <key>|rm <api>]   Tavily, Brave, Exa, Firecrawl, You.com, DeepSeek, Doubao Search (Volcengine), Yuanbao Search (Tencent Cloud), TinyFish or SearXNG for web search when no provider can search
   magpie groups                   routing groups: several models agents pick as one, group/<id>
-  magpie group add <name> models=<m1>,<m2> [routing=smart|order|rotate|usage|pace|weight|free|fast|cheap|drain|expiring] [stays=auto|session|turn|off]
+  magpie group add <name> models=<m1>,<m2> [routing=smart|order|rotate|usage|pace|weight|free|fast|cheap|drain|expiring|fit] [stays=auto|session|turn|off]
   magpie group <id> | set <id> k=v… | rm <id>   show, change or remove one (magpie group help for more)
   magpie accounts [agent] [--json]  every subscription magpie knows, with each one's allowance used and when it resets
   magpie accounts add <agent>     sign in to one more Claude, ChatGPT or Google (Gemini CLI, Antigravity) subscription
@@ -160,6 +161,7 @@ const usage = `magpie — one place to pick every agent's model
   magpie gateway-key mcp <id> [all|none|<server>|<server>/<tool> ...]   the MCP servers and tools a key may use
   magpie gateway-key access <id> [read-only|full]   read-only: the key reads quotas and usage (GET /, /v1/magpie/quotas, /v1/magpie/usage) and uses no model, MCP server or write
   magpie gateway-key admin <id> [off|local|any]   let the key manage providers, accounts and gateway keys through /v1/magpie/admin/ (local: from this computer only)
+  magpie gateway-key memory <id> [on|off]   let the key's agents on other computers read and save Magpie Memory
   magpie gateway-key move <id> <place>   put a key at a place in the list (from 1), the order list and the app show them in
   magpie gateway-key issue --ttl 1h [--name n] [--models a,b] [--accounts a,b] [--tokens N] [--cost USD] [--read-only] [--from <id>] [--json]
                                          a short-lived key (1m to 30 days) that stops working by itself; --from holds it to a key that issues keys; prints the key
@@ -219,6 +221,11 @@ var (
 // Main runs magpie with os.Args, at the version the build was stamped with.
 func Main(v string) {
 	version = v
+	if coderun.Helping() {
+		// internal: a run_code script, in a process of its own; it reads
+		// and writes no file of magpie's
+		os.Exit(coderun.Main())
+	}
 	// before anything reads or writes a file: no home, or a relative one,
 	// would put the agents' configs and magpie's keys under the working
 	// folder. What needs no file still answers (magpie version in a
@@ -268,9 +275,19 @@ func Main(v string) {
 		if msg := err.Error(); msg != "" {
 			fmt.Fprintln(os.Stderr, product.ID+":", msg)
 		}
-		endProcess(code)
+		exit(code)
 	}
-	endProcess(0)
+	exit(0)
+}
+
+// exit ends magpie with code, every plugin host it started ended and
+// waited for first: a host whose stdin closes leaves only once its calls
+// are answered, and one still asking a browser-backed plugin for its
+// models outlived the command that started it, its Chrome profiles held
+// (#7146).
+func exit(code int) {
+	plugin.EndHosts()
+	endProcess(code)
 }
 
 // runTUI runs the TUI, which quits on Ctrl+C and SIGTERM itself once it
@@ -348,9 +365,14 @@ func run(args []string) error {
 	// files written, which its save no longer waits for; and a test's run
 	// leaves catalog.Changed as it found it
 	was := catalog.Changed
+	// a command that does its work and ends asks no plugin for its list
+	// in the background: that ask started a plugin host the command left
+	// behind as it exited, beside the running gateway's (#7146)
+	listed := plugin.ListInBackground(servesPages(args))
 	defer func() {
 		agent.SyncCatalogSettled()
 		catalog.Changed = was
+		plugin.ListInBackground(listed)
 	}()
 	// claude-magpie (claude_launch_cli.go): every argument after run is
 	// claude's, --help too
@@ -372,6 +394,19 @@ func run(args []string) error {
 	if helpAsked(args) {
 		fmt.Println(product.Text(strings.TrimRight(helpFor(args), "\n")))
 		return nil
+	}
+	// nor is anything for the version or the notices: startUp read the
+	// providers, which started a plugin host beside the running gateway's
+	// (#7146)
+	if len(args) > 0 {
+		switch args[0] {
+		case "-v", "--version", "version":
+			fmt.Println(product.Name, version)
+			return nil
+		case "licenses":
+			fmt.Print(notices.Text)
+			return nil
+		}
 	}
 	// a ccswitch:// link an older magpie's claim on CC Switch's scheme
 	// handed over (Windows, Linux): CC Switch opens it and has its scheme
@@ -599,12 +634,6 @@ func run(args []string) error {
 		return daemonCmd(args[1:])
 	case "-h", "--help", "help":
 		fmt.Print(product.Text(usage))
-		return nil
-	case "-v", "--version", "version":
-		fmt.Println(product.Name, version)
-		return nil
-	case "licenses":
-		fmt.Print(notices.Text)
 		return nil
 	case "ls", "list":
 		// in the order the app lists them; those hidden there come last, dimmed

@@ -741,14 +741,15 @@ function quotaWho(q) {
 // /api/warm-now {agent, user}), for this account. Idle is as the
 // warm-up tells it (idle in codex_warmup.go): nothing used and its reset a
 // whole window away, or gone by; or not read at all, which a Claude account
-// never used is, while a Codex account with no 5-hour window has none to
-// start. One just warmed reads the same for warmSlack, so it waits that out.
+// never read is, while an account read with no 5-hour window (a Codex
+// plan's, a Claude Ultra's, shangyuan0818 on X) has none to start. One just warmed reads the
+// same for warmSlack, so it waits that out.
 const quotaWarmed = new Map();
 function quotaWarm(q) {
   const agent = q.provider, user = q.user, key = agent + "\n" + user?.toLowerCase();
   if (!user || q.error || !(state.settings?.[agent + "Users"] || []).some((u) => u.toLowerCase() === user.toLowerCase())) return null;
   const w = q.windows?.find((x) => x.name === "5 hours"), now = Date.now(), at = w?.resetsAt ? Date.parse(w.resetsAt) : 0;
-  if (w ? !(at && at <= now) && (w.used > 0 || at && at - now < 5 * 3600e3 - 600e3) : agent !== "claude") return null;
+  if (w ? !(at && at <= now) && (w.used > 0 || at && at - now < 5 * 3600e3 - 600e3) : agent !== "claude" || q.windows?.length) return null;
   const busy = quotaWarmed.get(key);
   if (busy && busy !== true && now - busy < 600e3) return null;
   const b = el("button", "text acct-warm" + (busy === true ? " busy" : ""), t("Warm up"));
@@ -804,6 +805,30 @@ function fitChartLabels() {
   }
 }
 new ResizeObserver(fitChartLabels).observe($("#view-usage"));
+
+// The allowances' cards come in at different times, each vendor's read
+// and the curves' history apart, and each one drawn grows the page above
+// what's below it (liuzhengdong99 on X: 滑到上面看某张卡片，视图会被拽回下面).
+// The Overview keeps where the reader is on what they read: the card, or
+// the part of the page under the cards, nearest the view's top, found again
+// by its data-key once the cards are drawn anew (keepInView in app.js). At
+// the page's top, while the cards are arranged by hand (unpin in app.js),
+// or on another tab, nothing is kept and the browser's own anchoring is
+// left as it was.
+keepInView($("#view-usage"), () => {
+  const v = $("#view-usage"), pane = $("#usagePane");
+  if (pane.hidden || !pane.offsetParent || usageArranging) return null;
+  // the highest that starts in sight, else the one cut by the view's top
+  const top = v.getBoundingClientRect().top, foot = top + v.clientHeight;
+  let best = null, at = Infinity, cut = null;
+  for (const n of [...$("#subscriptionUsage").children, ...[...pane.children].filter((c) => c.id !== "subscriptionUsage")]) {
+    if (!n.offsetParent) continue;
+    const r = n.getBoundingClientRect();
+    if (r.bottom <= top + 1 || !r.height || r.top >= foot) continue;
+    if (r.top >= top - 0.5) { if (r.top < at) { at = r.top; best = n; } } else if (!cut || r.top > cut.getBoundingClientRect().top) cut = n;
+  }
+  return best || cut;
+}, true);
 
 // The Overview's lists — Agents, Models, Accounts, Gateway keys — each fold
 // away under their heading (#2378: 日常看账号维度较多，都要拉到最底下), and
@@ -2205,7 +2230,9 @@ function ledDetail(r) {
   }
   // the subscription account that answered, or the key it was sent with
   if (r.source !== "log") add("Account", r.providerAccount || r.providerKeyName);
-  add("Sent", r.model);
+  // the id it went out under, when another than the model's (a variant a
+  // plugin picked for the effort, a name set upstream): the model's on hover
+  add("Sent", r.wire || r.model, r.wire ? "led-wire" : "", r.wire ? r.model + " → " + r.wire : "");
   if (r.served) add("Served", ledServed(r));
   add("Effort", r.effort);
   add("Service tier", ledTierText(r));
@@ -3391,7 +3418,7 @@ const ledHitText = (h) => h === null ? "" : hitPct(h);
 const ledHitTip = (r) => cacheHitTip({ input: r.in, cache_read: r.cache_read, cache_write: r.cache_write });
 const LED_COLS = [
   ["Time"], ["Agent"], ["Requested"], ["Provider · account"], ["Sent", "", true], ["Served"], ["Effort", "", true],
-  ["In", "n"], ["Out", "n"], ["Cache write", "n", true], ["Cache read", "n", true], ["Cache hit rate", "n", 2, "The share of the prompt read from the cache"], ["Cost", "n"], ["TTFT", "n", 2, "Time to first token"], ["Duration", "n"], ["Speed", "n", 0, "Output tokens a second after the first, over the streamed replies"], ["Status"],
+  ["In", "n", 0, "Input not read from or written to the cache. Where the cache columns are left out, the whole prompt"], ["Out", "n"], ["Cache write", "n", true], ["Cache read", "n", true], ["Cache hit rate", "n", 2, "The share of the prompt read from the cache"], ["Cost", "n"], ["TTFT", "n", 2, "Time to first token"], ["Duration", "n"], ["Speed", "n", 0, "Output tokens a second after the first, over the streamed replies"], ["Status"],
 ];
 
 // a window under a second after a wait over four times longer: the reply came
@@ -3910,10 +3937,21 @@ function renderLedger() {
     if (badges.childElementCount) wc.append(badges);
     // the model sent is what the gateway sent the vendor: a session file has none
     // The log names a model, but does not capture the outbound HTTP request.
-    td(r.model || "—", "model " + (r.model ? "model-value" : "faint"), r.source === "log" && r.model ? t("Model recorded in the local session log; the outbound HTTP request was not captured.") : r.model);
+    td(r.wire || r.model || "—", "model " + (r.model ? "model-value" : "faint"), r.source === "log" && r.model ? t("Model recorded in the local session log; the outbound HTTP request was not captured.") : r.wire ? r.model + " → " + r.wire : r.model);
     td(ledServed(r), "model");
     td(r.effort || "—", r.effort ? "" : "faint");
-    td(fmtN(r.in || 0), "n", exactN(r.in));
+    // Claude Code's in is what its prompt cache didn't hold, often 2 or 4
+    // tokens of a long prompt; where a narrow window leaves the cache
+    // columns out, the cell says the whole prompt instead, so a turn of a
+    // long message doesn't read as 2 (shangyuan0818 on X)
+    const cachedIn = r.cache_unknown ? 0 : (r.cache_read || 0) + (r.cache_write || 0);
+    if (cachedIn > 0) {
+      const whole = (r.in || 0) + cachedIn;
+      // the whole is drawn from data-all (app.css), so the cell's text
+      // stays the vendor's in, as every other count's does
+      const c = td(el("span", "in-own", fmtN(r.in || 0)), "n in-split", tipOf(ledNum(r.in || 0), t("Prompt {all}: {in} new · {read} cache read · {write} cache write", { all: ledNum(whole), in: ledNum(r.in || 0), read: ledNum(r.cache_read || 0), write: ledNum(r.cache_write || 0) })));
+      c.dataset.all = fmtN(whole);
+    } else td(fmtN(r.in || 0), "n", exactN(r.in));
     td(fmtN(r.out || 0), "n", tipOf(exactN(r.out), r.reasoning ? t("{n} reasoning, inside output", { n: ledNum(r.reasoning) }) : ""));
     // a vendor that counts no cache wrote and read none we know of, not 0 (#3464)
     if (r.cache_unknown) for (let i = 0; i < 2; i++) td("—", "n faint", t("The vendor doesn't count the cache"));
@@ -4008,16 +4046,19 @@ function renderLedger() {
 }
 
 {
-  let typing = 0;
-  $("#ledQ").oninput = (e) => {
-    ledQuery = e.target.value;
-    ledModel = "";
-    ledOwn("model");
-    clearTimeout(typing);
-    typing = setTimeout(() => { ledOffset = 0; loadLedger().catch((err) => status(err.message, "err")); }, 250);
-  };
+  // read once typing pauses, at Enter, and never while an input method is
+  // still composing its words (suetfungsit on X)
+  let typing = 0, composing = false;
+  const ledBy = () => { clearTimeout(typing); ledOffset = 0; loadLedger().catch((err) => status(err.message, "err")); };
+  const ledTyped = () => { ledQuery = $("#ledQ").value; ledModel = ""; ledOwn("model"); };
+  const later = () => { ledTyped(); clearTimeout(typing); typing = setTimeout(ledBy, 250); };
+  $("#ledQ").oninput = (e) => { if (e.isComposing || composing) clearTimeout(typing); else later(); };
+  $("#ledQ").addEventListener("compositionstart", () => { composing = true; clearTimeout(typing); });
+  $("#ledQ").addEventListener("compositionend", () => { composing = false; later(); });
   $("#ledQ").onkeydown = (e) => {
-    if (e.key === "Escape" && e.target.value) { e.stopPropagation(); e.target.value = ""; ledQuery = ""; ledModel = ""; ledOwn("model"); ledOffset = 0; loadLedger().catch((err) => status(err.message, "err")); }
+    if (e.isComposing || e.keyCode === 229) return; // the input method's own Enter or Escape
+    if (e.key === "Enter") { ledTyped(); ledBy(); }
+    else if (e.key === "Escape" && e.target.value) { e.stopPropagation(); e.target.value = ""; ledQuery = ""; ledModel = ""; ledOwn("model"); ledBy(); }
   };
   $("#ledExport").onclick = async () => {
     const b = $("#ledExport");
@@ -5499,8 +5540,23 @@ function sessionDetail(s) {
 
 // All sessions: the Sessions page, on the agent picked here if one is
 $("#sessAll").onclick = (e) => magpie.call("sessions", "reveal", sessAgent === "all" ? {} : { agent: sessAgent }, e);
-$("#sessQ").oninput = (e) => { sessQuery = e.target.value; if (sessions) renderSessions(); };
-$("#sessQ").onkeydown = (e) => { if (e.key === "Escape" && e.target.value) { e.stopPropagation(); e.target.value = ""; sessQuery = ""; if (sessions) renderSessions(); } };
+// Search filters once typing pauses, at Enter, and never while an input
+// method is still composing its words (suetfungsit on X: pinyin filtered
+// a long history before its characters were picked)
+{
+  const q = $("#sessQ");
+  let typing = 0, composing = false;
+  const by = () => { clearTimeout(typing); if (sessQuery === q.value) return; sessQuery = q.value; if (sessions) renderSessions(); };
+  const later = () => { clearTimeout(typing); typing = setTimeout(by, 200); };
+  q.oninput = (e) => { if (e.isComposing || composing) clearTimeout(typing); else later(); };
+  q.addEventListener("compositionstart", () => { composing = true; clearTimeout(typing); });
+  q.addEventListener("compositionend", () => { composing = false; later(); });
+  q.onkeydown = (e) => {
+    if (e.isComposing || e.keyCode === 229) return; // the input method's own Enter or Escape
+    if (e.key === "Enter") by();
+    else if (e.key === "Escape" && q.value) { e.stopPropagation(); q.value = ""; by(); }
+  };
+}
 
 // ---------- settings ----------
 //
@@ -5693,6 +5749,46 @@ function cardsShownFor(p) {
 // that ends highest (#860), as tall as what it holds (jen_celeus on X).
 const USAGE_MIN = 260, USAGE_GAP = 7;
 let usagePacked = null, usagePackFrame = 0;
+// usageTall: each card's height as last drawn in full, by its key, kept
+// for the next start (magpie.usageCardTall). A card still
+// waiting on its read or its curve (usageWaiting) is packed and
+// held at least that tall, so the cards come in without the page around
+// them moving (liuzhengdong99 on X: 先按固定高度占位、数据回来再填内容).
+let usageTall = {}, usageTallSave = 0;
+try { usageTall = JSON.parse(localStorage.getItem("magpie.usageCardTall") || "{}") || {}; } catch {}
+for (const k in usageTall) if (!(usageTall[k] > 0)) delete usageTall[k];
+// still to come for a card: an account the gateway is reading yet
+// (X-Magpie-Reading, asked again), or its curve before the history's
+// first answer (quotasReading, quotaHistV in app.js; history that never
+// comes leaves the card as tall as it was)
+function usageWaiting(k) {
+  const subs = (quotas || []).filter((q) => q.provider === k);
+  return quotasReading && subs.some((q) => q.error) || !quotaHistV && quotaRange !== "off" && subs.some((q) => !q.error && q.windows?.length);
+}
+function usageWaits(cards, hs) {
+  const held = cards.map(() => false);
+  let moved = false;
+  cards.forEach((c, i) => {
+    const k = c.dataset.key, was = usageTall[k];
+    if (!k) return;
+    if (usageWaiting(k)) {
+      if (was > hs[i]) { hs[i] = was; held[i] = true; }
+    } else if (was !== Math.ceil(hs[i])) {
+      usageTall[k] = Math.ceil(hs[i]);
+      moved = true;
+    }
+  });
+  if (moved) usageTallKeep();
+  return held;
+}
+function usageTallKeep() {
+  if (!usageTallSave) usageTallSave = setTimeout(() => {
+    usageTallSave = 0;
+    const keys = Object.keys(usageTall);
+    for (const k of keys.slice(0, Math.max(0, keys.length - 200))) delete usageTall[k];
+    try { localStorage.setItem("magpie.usageCardTall", JSON.stringify(usageTall)); } catch {}
+  }, 1000);
+}
 function packUsage() {
   const list = $("#subscriptionUsage");
   if (usagePackFrame) { cancelAnimationFrame(usagePackFrame); usagePackFrame = 0; }
@@ -5716,10 +5812,13 @@ function packUsage() {
     const empty = ends.reduce((s, e) => s + tall - (e - USAGE_GAP), 0) * (width - (n - 1) * USAGE_GAP) / n;
     return { n, at, tall, empty };
   };
+  let held = [];
   const heights = () => {
     for (const c of cards) c.style.minHeight = "";
     fitQuota([...list.querySelectorAll(".quota-windows")]);
-    return foldedHeights(cards, cards.map((c) => c.getBoundingClientRect().height));
+    const hs = cards.map((c) => c.getBoundingClientRect().height);
+    held = usageWaits(cards, hs);
+    return foldedHeights(cards, hs);
   };
   const columns = (n) => { list.style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr))`; };
   let best;
@@ -5729,7 +5828,11 @@ function packUsage() {
   } else {
     list.classList.remove("packed");
     for (const c of cards) c.style.gridArea = "";
+    // while cards are still to come, the columns they were last seen
+    // whole in ("#" + how many fit): the heights kept are that width's
+    const waits = cards.some((c) => usageWaiting(c.dataset.key)), kept = usageTall["#" + most];
     for (let n = most; n >= Math.max(1, most - 1); n--) {
+      if (waits && kept && n !== kept && kept >= most - 1 && kept <= most) continue;
       columns(n);
       const p = place(n, heights());
       if (!best) best = p;
@@ -5740,13 +5843,17 @@ function packUsage() {
     best = place(best.n, heights());
   }
   usagePacked = { most, keys, n: best.n };
+  if (!held.some(Boolean) && !cards.some((c) => usageWaiting(c.dataset.key)) && usageTall["#" + most] !== best.n) { usageTall["#" + most] = best.n; usageTallKeep(); }
   list.classList.add("packed");
   best.at.forEach(([c, top, h], i) => {
     const area = `${top + 1} / ${c + 1} / span ${Math.max(1, h)} / span 1`;
     if (cards[i].style.gridArea !== area) cards[i].style.gridArea = area;
-    const min = cards[i].dataset.folded ? h + "px" : "";
+    const min = cards[i].dataset.folded || held[i] ? h + "px" : "";
     if (cards[i].style.minHeight !== min) cards[i].style.minHeight = min;
   });
+  // the cards drawn anew or moved to another column: the one being read
+  // stays where it was on the screen
+  followPin($("#view-usage"));
 }
 // foldedHeights: a folded card as tall as the tallest folded one of one
 // account, or whole rows of it, so folded cards line up in a grid; an

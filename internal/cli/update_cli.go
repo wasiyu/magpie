@@ -25,6 +25,9 @@ var (
 	updateCanElevate  = update.CanElevate
 	updateInContainer = gateway.InContainer
 	updatePackagedBy  = update.PackagedBy
+	// updateReplaceBinary is update.ReplaceBinary; a test downloads
+	// without putting the test binary's replacement in
+	updateReplaceBinary = update.ReplaceBinary
 )
 
 // updateEveries are the intervals magpie update auto takes, by their
@@ -249,12 +252,23 @@ func updateCmd(args []string) error {
 	if !update.Released(version) {
 		return fmt.Errorf(product.Text("this magpie was built from source; update it the way you built it, or get the release from %s"), update.Site)
 	}
+	// a package manager's copy (Homebrew's, pacman's magpie-bin from the
+	// AUR, a .deb's, an app or a binary in Nix's store): replaced under
+	// it, the manager's database names the old version and its next
+	// upgrade writes over this one; a store's app can't be replaced at all
+	if exe, err := updateExecutable(); err == nil {
+		if p := updatePackagedBy(exe); p != nil {
+			return fmt.Errorf("%s", product.Text(p.Say()))
+		}
+	}
 	if app := update.Bundle(); app != "" {
 		if update.Stuck(app) != "" {
 			return fmt.Errorf(product.Text("%s can't be replaced where it is; move magpie to Applications, or download the new version from %s"), tilde(app), update.Site)
 		}
 		fmt.Println(muted.Render("  downloading " + update.AppAsset() + via(ctx) + " …"))
-		staged, err := update.Stage(ctx, rel, app)
+		pctx, ended := withDownloadProgress(ctx)
+		staged, err := update.Stage(pctx, rel, app)
+		ended()
 		if err != nil {
 			return err
 		}
@@ -279,18 +293,13 @@ func updateCmd(args []string) error {
 	// the Docker image's /magpie, run as nonroot: the image is what is
 	// updated, and a replace would only fail with "permission denied"
 	if exe, err := updateExecutable(); err == nil && !update.Writable(filepath.Dir(exe)) && !updateCanElevate() && updateInContainer() {
-		return fmt.Errorf("%s", product.Text("this magpie runs in a container and can't replace itself; pull the new image (docker pull ghcr.io/yetone/magpie:latest) and recreate the container"))
-	}
-	// a package manager's binary (Homebrew's, pacman's magpie-bin from
-	// the AUR, a .deb's): replaced under it, the manager's database names
-	// the old version and its next upgrade writes over this one
-	if exe, err := updateExecutable(); err == nil {
-		if p := updatePackagedBy(exe); p != nil {
-			return fmt.Errorf("%s", product.Text(p.Say()))
-		}
+		return fmt.Errorf("%s", product.Text(fmt.Sprintf("this magpie runs in a container and can't replace itself; pull the image of %s (docker pull %s) and recreate the container from it", rel.Version, update.Image(rel.Version))))
 	}
 	fmt.Println(muted.Render("  downloading " + update.BinaryAsset() + via(ctx) + " …"))
-	if err := update.ReplaceBinary(ctx, rel); err != nil {
+	pctx, ended := withDownloadProgress(ctx)
+	err = updateReplaceBinary(pctx, rel)
+	ended()
+	if err != nil {
 		return err
 	}
 	fmt.Println(green.Render("✓"), "updated to", rel.Version)

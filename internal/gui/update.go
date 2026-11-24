@@ -115,6 +115,7 @@ type updater struct {
 	autoRestart func() bool
 	autoSkip    string
 	waitAsked   bool // the restart waiting was a click's
+	waitNow     bool // and its Restart now: a busy gateway isn't waited for
 	// installed: this process put an update in (install), and is leaving
 	// for it; followed: it is restarting into one another magpie put in
 	// (restartBeside). Either way what is on disk is no longer another's
@@ -141,7 +142,10 @@ type updateJSON struct {
 	// magpie and updates it (pacman's magpie-bin from the AUR, say), and
 	// the command that does
 	Packaged *packagedJSON `json:"packaged,omitempty"`
-	Retry    bool          `json:"retry,omitempty"` // error: a click downloads it again
+	// available, stuck "container": the image of the version out, its
+	// own tag (update.Image)
+	Image string `json:"image,omitempty"`
+	Retry bool   `json:"retry,omitempty"` // error: a click downloads it again
 	// error: the download failed through this mirror (Settings' UpdateMirror),
 	// and GitHub itself may do (#893)
 	Mirror string `json:"mirror,omitempty"`
@@ -296,6 +300,16 @@ var (
 func (u *updater) place(goos string, gui bool) {
 	if product.Jellytool {
 		return
+	}
+	// a package's copy is its manager's to update, an app in Nix's store
+	// as much as a binary: the bundle's own check would say "read-only"
+	// and send the user to move it to Applications
+	if exe, err := executable(); err == nil {
+		if p := packagedBy(exe); p != nil {
+			u.exeDir = filepath.Dir(exe)
+			u.stuck, u.packaged = "package", p
+			return
+		}
 	}
 	if b := bundleOf(); b != "" {
 		if u.stuck = update.Stuck(b); u.stuck == "" {
@@ -864,13 +878,18 @@ func (u *updater) jsonIn(lang string) updateJSON {
 	if u.state == "error" {
 		j.Mirror, j.Network = u.mirror, u.network
 	}
-	if u.state == "checking" && u.staged != "" {
-		j.State = "ready" // what was downloaded can still be restarted into
+	if u.state == "checking" && u.staged != "" && !(u.waiting && u.waitAsked) {
+		// what was downloaded can still be restarted into; not when a
+		// click's restart waits on this check, which the page shows
+		j.State = "ready"
 	}
 	if u.state == "available" {
 		j.Stuck = u.stuck
 		if u.stuck == "not-writable" {
 			j.StuckDir = u.exeDir
+		}
+		if u.stuck == "container" && u.latest != nil {
+			j.Image = update.Image(u.latest.Version)
 		}
 		if u.stuck == "package" && u.packaged != nil {
 			j.Packaged = &packagedJSON{Manager: u.packaged.Name(), Package: u.packaged.Package, Command: u.packaged.Command()}
@@ -1074,26 +1093,34 @@ func updateRoutes(mux *http.ServeMux, w Windows) {
 			writeJSON(rw, updates.json())
 			return
 		}
+		restart := func() bool {
+			if restartFrom(w, in.View) {
+				go leave(w.Quit)
+				return true
+			}
+			return false
+		}
 		if updates.json().State == "ready" {
 			if in.When != "now" && !updates.idle() {
-				updates.waitIdle(func() bool {
-					if restartFrom(w, in.View) {
-						go leave(w.Quit)
-						return true
-					}
-					return false
-				}, true)
+				updates.waitIdle(restart, true)
 				writeJSON(rw, updates.json())
 				return
 			}
 			updates.cancelWait()
 			updates.recheck(true)
-			if updates.asking() {
-				// the feed hasn't answered yet: the page reads again and
-				// restarts once it has, into the newest
-				j := updates.json()
-				j.State = "checking"
-				writeJSON(rw, j)
+			if st := updates.json().State; updates.asking() || st == "downloading" {
+				// the feed hasn't answered yet, or named a newer version,
+				// downloading now: the restart is still the click's, made
+				// here once it is in, into the newest. The page used to
+				// be told only "checking", and Settings' row read again,
+				// found the download waiting and offered Restart to update
+				// as before: the click did nothing (canlee886 on X, a slow
+				// feed); a second one restarted.
+				updates.waitIdle(restart, true)
+				updates.mu.Lock()
+				updates.waitNow = in.When == "now"
+				updates.mu.Unlock()
+				writeJSON(rw, updates.json())
 				return
 			}
 		}
@@ -1211,7 +1238,16 @@ func restartInto(web, window bool, view string, bySelf bool) bool {
 		return false
 	}
 	if err != nil {
+		// the new version is in place but nothing started it: quitting now
+		// would leave no magpie running at all (ShipInSand on X: it "often
+		// disappears by itself"). This one runs on and says so.
 		log.Println("update:", err)
+		os.Remove(filepath.Join(settings.Dir(), updatedInAppFile))
+		unmarkQuietRestart()
+		updates.mu.Lock()
+		updates.err = "the new version is installed but couldn't be started (" + err.Error() + "): quit magpie and open it again"
+		updates.mu.Unlock()
+		return false
 	}
 	return true
 }
