@@ -169,7 +169,7 @@ func TestCodexIsolationJellytoolWithChatGPT(t *testing.T) {
 }
 
 func TestCodexIsolationUpgradeSubscription(t *testing.T) {
-	home, read := codexHome(t, `{"tokens":{"access_token":"x","id_token":"x.e30.x"}}`, "model_provider = \"jellytool\"\nmodel = \"fake/m1\"\nmodel_catalog_json = \"jellytool-models.json\"\n[model_providers.jellytool]\nbase_url = " + quoteTOML(gateway.URL()+"/v1") + "\n")
+	home, read := codexHome(t, `{"tokens":{"access_token":"x","id_token":"x.e30.x"}}`, "model_provider = \"jellytool\"\nmodel = \"fake/m1\"\nmodel_catalog_json = \"jellytool-models.json\"\n[model_providers.jellytool]\nbase_url = "+quoteTOML(gateway.URL()+"/v1")+"\n")
 	cx := codex(home)
 	if err := edit.SetTOMLTop(cx.Path, edit.KV{Path: "openai_base_url", Value: codexGatewayURL()}); err != nil {
 		t.Fatal(err)
