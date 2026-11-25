@@ -22743,7 +22743,8 @@ async function renderUpdate(r, u) {
   // narrow row's room. Named for what it does: a bare Restart beside
   // Check read as installing an update (realfxw on X restarted again and
   // again on a version newer than Daily's)
-  if (!/^(ready|downloading|found|available|blocked)$/.test(u.state) && !u.newest && !(u.state === "error" && u.latest)) btn(t("Restart only"), () => import("./versionrow.js").then(() => restartSelf(r, u)), u.state === "checking");
+  // Not in Jellytool: its instance lock turns the successor away
+  if (!window.bootPrefs?.jellytool && !/^(ready|downloading|found|available|blocked)$/.test(u.state) && !u.newest && !(u.state === "error" && u.latest)) btn(t("Restart only"), () => import("./versionrow.js").then(() => restartSelf(r, u)), u.state === "checking");
   if (kept && !pageShown) kept.remove();
 }
 
