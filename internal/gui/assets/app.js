@@ -23839,6 +23839,8 @@ function layoutNav() {
   }
   layoutNav.done = true;
   const side = $("#side"), nav = $("#nav"), brand = $(".brand"), prefs = $("#prefs"), btn = $("#sideToggle");
+  // moved, the button loses the keyboard's focus: it is given back
+  const had = document.activeElement === btn;
   document.body.classList.toggle("side-nav", on);
   side.hidden = !on;
   $("#crumb").hidden = !on;
@@ -23865,6 +23867,7 @@ function layoutNav() {
   renderSideToggle();
   fitTop();
   self.addToolsFloat?.(true);
+  if (had) btn.focus({ preventScroll: true });
 }
 // the sidebar's width, the reader's own once dragged (sideDrag), else
 // app.css's; at most ~a third of a narrow window
