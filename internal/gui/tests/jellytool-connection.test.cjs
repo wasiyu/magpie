@@ -54,6 +54,9 @@ function fixture(lang, theme) {
       if (w.providerFailure) { w.providerFailure--; return json({ error: "fixture setup unavailable" }, 503); }
       return json(snapshot);
     }
+    // The window saying it is in use (update/using, sent on input) or that it
+    // went from view (page-away) is not a save of the page's own.
+    if (req.method() === "POST" && (u.pathname === "/api/update/using" || u.pathname === "/api/page-away")) return json({});
     if (req.method() === "POST") {
       const body = req.postDataJSON();
       w.posts.push({ path: u.pathname, body });

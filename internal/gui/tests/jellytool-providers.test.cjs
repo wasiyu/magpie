@@ -67,7 +67,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
         assert.equal(await sheet.locator(".kind b").first().textContent(), await page.evaluate(() => t("From plugins")));
         assert.deepEqual(await sheet.locator(".grid").first().locator(".n").allTextContents(), ["Jellytoken", "Alpha", "Zulu"]);
         assert.equal(await sheet.locator(".tile").first().locator("img").getAttribute("src"), "icons/jellytoken.png");
-        assert(await sheet.evaluate((e) => e.scrollWidth <= e.clientWidth + 1), "sheet fits window");
+        // What the user would see: no sideways scroll, and every tile inside
+        // the sheet. The sheet's own scrollWidth also counts the sticky
+        // head's frosted ::before, which bleeds 6px by design (66f98d9d6).
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "sheet fits window");
+        assert(await sheet.evaluate((e) => { const r = e.getBoundingClientRect(); return [...e.querySelectorAll(".tile")].every((t) => t.getBoundingClientRect().right <= r.right + 1); }), "every tile fits inside the sheet");
         if (process.env.ARTIFACT_DIR && lang === "zh") {
           await fs.mkdir(process.env.ARTIFACT_DIR, { recursive: true });
           await page.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `${engine}-${width}-jellytool-providers.png`) });
