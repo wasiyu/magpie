@@ -4,7 +4,9 @@
 body.window.mac.side-nav .side-top { height: 56px; padding: 0 18px; }
 .side-top .brand { min-width: 0; gap: 8px; font-size: 13px; font-weight: 600; letter-spacing: 0; }
 .side-top .brand > span { flex: none; white-space: nowrap; }
-.side-top #sideToggle { margin-inline-start: auto; width: 26px; height: 26px; }
+/* magpie puts the toggle before the brand (4a4a90c23); Jellytool's sits at
+   the end, so the logo keeps the navigation's left edge */
+.side-top #sideToggle { order: 1; margin-inline-start: auto; width: 26px; height: 26px; }
 .sheet .row-head { height: auto; min-height: 26px; flex-wrap: wrap; }
 .jelly-models { display: grid; gap: 12px; min-width: 0; }
 .jelly-model-intro { margin: 0; max-width: 65ch; color: var(--fg-2); font-size: 13px; line-height: 1.65; }
