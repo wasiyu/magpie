@@ -667,6 +667,7 @@ body:not(.side-nav) .side-toggle .st-pane { opacity: 0; }
 .nav-morph #sideToggle { view-transition-name: side-toggle; }
 .nav-morph .top .actions { view-transition-name: actions; }
 .nav-morph .view:not([hidden]) { view-transition-name: page; }
+.nav-morph #nav button[data-view="quickstart"] { view-transition-name: nav-quickstart; }
 .nav-morph #nav button[data-view="agents"] { view-transition-name: nav-agents; }
 .nav-morph #nav button[data-view="sessions"] { view-transition-name: nav-sessions; }
 .nav-morph #nav button[data-view="library"] { view-transition-name: nav-library; }
