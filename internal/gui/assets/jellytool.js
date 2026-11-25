@@ -349,14 +349,18 @@
     let rec = recommendationTiers(models);
     // The supplier editor also includes saved IDs absent from the vendor list.
     // Only the private catalog response is evidence of key access.
-    let accessIDs = null, refreshBulk = () => {};
+    let accessIDs = null, refreshBulk = () => {}, redraw = () => {};
     const available = (m) => accessIDs?.has(m.id) === true;
+    const shownIDs = (tiers) => JSON.stringify(Object.values(tiers).map((list) => list.map((m) => m.id)));
     const catalogRead = api("jellytool/models").then((data) => {
       if (data.catalogError || !Array.isArray(data.models)) return false;
       const listed = data.models.filter((m) => (m.outputs || ["text"]).includes("text"));
       accessIDs = new Set(listed.map((m) => m.id));
+      const before = shownIDs(rec);
       rec = recommendationTiers(listed, new Map(data.models.map((m) => [m.id, m])));
-      refreshBulk();
+      // The key's catalog can name another newest version (a `latest` pick)
+      // than the supplier editor's list did: draw the cards it chose.
+      if (shownIDs(rec) !== before) redraw(); else refreshBulk();
       return true;
     }).catch(() => false);
     const checkAccess = async () => {
@@ -454,7 +458,7 @@
       tabs.append(tab);
     }
     toolbar.append(tabs, count);
-    box.append(el("p", "jelly-model-intro hint", t("Choose recommended models for your tasks, or browse the full directory for more options.")), toolbar, content); draw();
+    box.append(el("p", "jelly-model-intro hint", t("Choose recommended models for your tasks, or browse the full directory for more options.")), toolbar, content); draw(); redraw = draw;
     // Metadata must not detach a card between pointerdown and click. Keep
     // visible cards stable; the next user action draws the updated ordering.
     return box;

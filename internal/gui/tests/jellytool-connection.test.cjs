@@ -403,7 +403,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const guide = page.locator("#quickstart"), choose = guide.locator('[data-step="models"] .guide-go');
       const savedModels = guide.locator('.qs-model-summary .qs-model-summary-name');
       const savedModelTiers = guide.locator('.qs-model-summary .qs-model-tier');
-      const tierOrder = { "gpt-6-astra": 0, "gpt-6.1-sol": 1, "gpt-6.1-terra": 2, "gpt-6-luna": 2 };
+      const tierOrder = { "gpt-6.1-astra": 0, "gpt-6.1-sol": 1, "gpt-6.1-terra": 2, "gpt-6-luna": 2 };
       const savedOrder = (ids) => ids.map((id, index) => ({ id, index })).sort((a, b) => (tierOrder[a.id] ?? 3) - (tierOrder[b.id] ?? 3) || a.index - b.index).map(({ id }) => id);
       await choose.waitFor();
       await page.waitForFunction(() => document.querySelector("#quickstart")?.getAttribute("aria-busy") === "false");
@@ -447,7 +447,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const tr = (s) => page.evaluate((s) => t(s), s);
       assert.deepEqual(await groups.locator("h4").allTextContents(), await Promise.all(["Solving complex problems", "Everyday work and coding", "Simple tasks"].map(tr)));
       const ids = (group) => group.locator("[data-model]").evaluateAll((bs) => bs.map((b) => b.dataset.model));
-      assert.deepEqual(await ids(groups.nth(0)), ["gpt-6-astra", "glm-5.3", "qwen3.8-max", "doubao-seed-2-1-pro", "kimi-k3.1-pro"]);
+      assert.deepEqual(await ids(groups.nth(0)), ["gpt-6.1-astra", "glm-5.3", "qwen3.8-max", "doubao-seed-2-1-pro", "kimi-k3.1-pro"]);
+      assert.equal(await picker.locator('[data-model="gpt-6-astra"]').count(), 0, "the Astra card follows the newest version the catalog lists");
       assert.deepEqual(await ids(groups.nth(1)), ["gpt-6.1-sol", "glm-5.3-flash"]);
       assert.deepEqual(await ids(groups.nth(2)), ["gpt-6.1-terra", "gpt-6-luna"]);
       assert.equal(await picker.locator(".jelly-model-recommended").count(), 4, "each fixed GPT model has a recommendation badge");
@@ -487,7 +488,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       const bulk = (index, label) => groups.nth(index).getByRole("button", { name: label, exact: true });
       const all = bulkLabels[0], none = bulkLabels[1];
       assert.equal(await bulk(0, none).count(), 0, "an empty category offers only Select all");
-      await picker.locator('[data-model="gpt-6-astra"]').click();
+      await picker.locator('[data-model="gpt-6.1-astra"]').click();
       await bulk(1, all).focus(); await page.keyboard.press("Enter");
       assert.equal(await groups.nth(1).locator('[aria-pressed="true"]').count(), 2, "Select all selects every model in this category without duplicates");
       assert.equal(await bulk(1, all).count(), 0, "the same control changes to Select none after selecting all");
@@ -495,12 +496,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await bulk(1, none).evaluate((b) => document.activeElement === b), true, "the bulk toggle keeps keyboard focus when its label changes");
       await page.keyboard.press("Enter");
       assert.equal(await groups.nth(1).locator('[aria-pressed="true"]').count(), 0, "Select none clears the whole category");
-      assert.equal(await picker.locator('[data-model="gpt-6-astra"]').getAttribute("aria-pressed"), "true", "clearing one category keeps other categories selected");
+      assert.equal(await picker.locator('[data-model="gpt-6.1-astra"]').getAttribute("aria-pressed"), "true", "clearing one category keeps other categories selected");
       assert.equal(await picker.locator(".jelly-model-count").textContent(), await page.evaluate(() => t("{n} selected", { n: 2 })), "directory-only selections survive clearing a recommendation category");
       assert.equal(await bulk(1, none).count(), 0, "the same control changes back to Select all after clearing");
       assert.equal(await groups.nth(1).locator("button.action").count(), 1);
       assert.equal(await bulk(1, all).evaluate((b) => document.activeElement === b), true, "the bulk toggle keeps keyboard focus after clearing");
-      await picker.locator('[data-model="gpt-6-astra"]').click();
+      await picker.locator('[data-model="gpt-6.1-astra"]').click();
       await bulk(1, all).click();
       assert.equal(await picker.locator(".jelly-model-count").textContent(), await page.evaluate(() => t("{n} selected", { n: 3 })), "selection count includes saved and newly selected models");
       assert.deepEqual(w.chosen, ["custom-model"], "recommendations only edit the local draft");
@@ -546,8 +547,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await savedAtModelStep(w.chosen);
       assert.deepEqual(await savedModelTiers.allTextContents(), [await tr("Everyday coding"), await tr("Other")], "saved models keep their task tiers visible in order");
       await choose.click();
-      await picker.locator('[data-model="gpt-6-astra"]').click();
-      await picker.locator('[data-model="gpt-6-astra"][aria-pressed="true"]').waitFor();
+      await picker.locator('[data-model="gpt-6.1-astra"]').click();
+      await picker.locator('[data-model="gpt-6.1-astra"][aria-pressed="true"]').waitFor();
       const writesBeforeMore = w.posts.length;
       await picker.locator(".jelly-choose-all").press("Enter");
       const editor = page.locator("#modal .editor");
@@ -555,7 +556,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.equal(await editor.locator(".mserves,.mnames,.mfoot,.jelly-connection").count(), 0, "guided directory exposes only model selection");
       assert.equal(await page.evaluate(() => view), "providers", "more models opens the supplier directory");
       assert.equal(await editor.locator(".jelly-rec-group,.jelly-model-tabs").count(), 0, "supplier editor has no recommendation view");
-      assert.deepEqual(await page.evaluate(() => draft.chosen), ["custom-model", "gpt-6.1-sol", "gpt-6-astra"], "more models carries the unsaved recommendation draft");
+      assert.deepEqual(await page.evaluate(() => draft.chosen), ["custom-model", "gpt-6.1-sol", "gpt-6.1-astra"], "more models carries the unsaved recommendation draft");
       assert.equal(w.posts.length, writesBeforeMore, "opening the directory does not save");
       await editor.locator(".mbulk input").fill("custom-extra");
       assert.equal(await editor.locator(".mchip.pick").count(), 1, "complete directory supports filtering");
@@ -564,11 +565,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.locator("#modal").waitFor({ state: "hidden" });
       assert.equal(await page.evaluate(() => view), "quickstart");
       await picker.getByRole("tab", { name: await tr("Selected"), exact: true }).click();
-      assert.deepEqual(await ids(picker), ["custom-model", "gpt-6.1-sol", "gpt-6-astra", "custom-extra"], "returning from the directory keeps all unsaved picks");
+      assert.deepEqual(await ids(picker), ["custom-model", "gpt-6.1-sol", "gpt-6.1-astra", "custom-extra"], "returning from the directory keeps all unsaved picks");
       assert.equal(w.posts.length, writesBeforeMore, "returning and switching tabs do not save");
       await picker.locator(".jelly-choose-all").press("Enter");
       await editor.locator(".models").waitFor();
-      assert.deepEqual(await page.evaluate(() => draft.chosen), ["custom-model", "gpt-6.1-sol", "gpt-6-astra", "custom-extra"], "reopening the directory retains the same selection");
+      assert.deepEqual(await page.evaluate(() => draft.chosen), ["custom-model", "gpt-6.1-sol", "gpt-6.1-astra", "custom-extra"], "reopening the directory retains the same selection");
       w.saveFailure = true;
       await editor.locator(".bar > .primary").click();
       await editor.getByText("fixture save failed", { exact: true }).waitFor();
@@ -576,15 +577,15 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       w.saveFailure = false;
       await editor.locator(".bar > .primary").click();
       await page.locator("#modal").waitFor({ state: "hidden" });
-      assert.deepEqual(w.chosen, ["custom-model", "gpt-6.1-sol", "gpt-6-astra", "custom-extra"], "supplier Save includes recommendations and extra models");
+      assert.deepEqual(w.chosen, ["custom-model", "gpt-6.1-sol", "gpt-6.1-astra", "custom-extra"], "supplier Save includes recommendations and extra models");
       assert.equal(await page.evaluate(() => view), "quickstart", "Save from the guided directory returns to Quick Start");
       assert.equal(await picker.count(), 0, "saving completes the selection session");
       await savedAtModelStep(w.chosen);
       // A background read must update names even when the selection count stays the same.
-      w.chosen = ["custom-model", "gpt-6.1-sol", "gpt-6-astra", "extra-model-0"];
+      w.chosen = ["custom-model", "gpt-6.1-sol", "gpt-6.1-astra", "extra-model-0"];
       await page.evaluate(() => refreshQuickstart());
       assert.deepEqual(await savedModels.allTextContents(), savedOrder(w.chosen), "equal-sized saved selections refresh the summary in task-tier order");
-      w.chosen = ["custom-model", "gpt-6.1-sol", "gpt-6-astra", "custom-extra"];
+      w.chosen = ["custom-model", "gpt-6.1-sol", "gpt-6.1-astra", "custom-extra"];
       await page.evaluate(() => refreshQuickstart());
       await choose.click(); await picker.locator(".jelly-choose-all").press("Enter");
       await editor.locator(".mchip.pick").filter({ hasText: "custom-extra" }).first().click();
@@ -594,7 +595,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.locator("#modal").waitFor({ state: "hidden" });
       assert.equal(await page.evaluate(() => view), "quickstart", "discarding returns to Quick Start");
       assert.equal(w.posts.length, writesBeforeCancel, "Cancel never saves");
-      assert.deepEqual(w.chosen, ["custom-model", "gpt-6.1-sol", "gpt-6-astra", "custom-extra"], "Cancel restores the previously saved selection");
+      assert.deepEqual(w.chosen, ["custom-model", "gpt-6.1-sol", "gpt-6.1-astra", "custom-extra"], "Cancel restores the previously saved selection");
       await choose.click(); await picker.locator(".jelly-choose-all").press("Enter");
       await editor.locator(".models").waitFor();
       await page.keyboard.press("Escape");
@@ -672,7 +673,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.locator('#quickstart [data-step="models"] .guide-go').click();
       const picker = page.locator(".qs-model-picker");
       const notice = await page.evaluate(() => t("Please enable model access in Jellytoken first."));
-      for (const [id, tier] of [["gpt-6-astra", "complex"], ["gpt-6.1-sol", "daily"], ["gpt-6.1-terra", "simple"], ["gpt-6-luna", "simple"]]) {
+      // The supplier editor lists older GPT IDs the key's catalog doesn't; once
+      // the catalog is read the cards are redrawn as the configured fallbacks.
+      await picker.locator('[data-kind="complex"] [data-model="gpt-6.2-astra"]').waitFor();
+      assert.equal(await picker.locator('[data-model="gpt-6-astra"], [data-model="gpt-6.1-sol"]').count(), 0, "cards drawn from the supplier list are replaced");
+      for (const [id, tier] of [["gpt-6.2-astra", "complex"], ["gpt-6.2-sol", "daily"], ["gpt-6.1-terra", "simple"], ["gpt-6-luna", "simple"]]) {
         const card = picker.locator(`[data-kind="${tier}"] [data-model="${id}"]`);
         assert.equal(await card.count(), 1, "GPT stays visible without access");
         assert.equal((await card.locator(".jelly-model-recommended").textContent()).endsWith(await page.evaluate(() => t("Recommended"))), true);
@@ -684,7 +689,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       // Price metadata cannot remove the fixed recommendations on redraw.
       await picker.locator('button[data-category="complex"]').click();
       assert.equal(await picker.locator('[data-model="glm-5.3"]').getAttribute("aria-pressed"), "true");
-      assert.equal(await picker.locator('[data-model="gpt-6-astra"]').getAttribute("aria-pressed"), "false");
+      assert.equal(await picker.locator('[data-model="gpt-6.2-astra"]').getAttribute("aria-pressed"), "false");
       assert.equal(await picker.locator('button[data-category="complex"]').textContent(), await page.evaluate(() => t("Clear")), "partial access does not claim every displayed model is selected");
       await picker.locator('button[data-category="complex"]').click();
       assert.equal(await picker.locator('button[data-category="complex"]').textContent(), await page.evaluate(() => t("Select available models")));
@@ -740,14 +745,14 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
     const { context, page } = await newPage(engine, { reducedMotion: "reduce" });
     t.after(() => closePage(context));
     const w = fixture("zh", "light"); w.connected = true; w.models = ["custom-model"];
-    w.modelConfig = { version: 1, tiers: { complex: [], daily: [{ id: "gpt-custom", alwaysShow: true, recommended: true, name: "Configured GPT" }], simple: [] } };
+    w.modelConfig = { version: 2, tiers: { complex: [], daily: [{ id: "gpt-custom", alwaysShow: true, recommended: true, name: "Configured GPT" }], simple: [] } };
     await page.route("**/*", w.serve);
     await page.goto("http://jellytool.fixture/?view=quickstart");
     const choose = page.locator('#quickstart [data-step="models"] .guide-go');
     await choose.click();
     const picker = page.locator(".qs-model-picker");
     assert.equal(await picker.locator('[data-kind="daily"] [data-model="gpt-custom"]').count(), 1);
-    assert.equal(await picker.locator('[data-model="gpt-6-astra"]').count(), 0);
+    assert.equal(await picker.locator('[data-model^="gpt-6"]').count(), 0);
     await picker.locator('[data-model="gpt-custom"]').click();
     assert.equal(await picker.locator('[data-model="gpt-custom"]').getAttribute("aria-pressed"), "false");
     assert.equal(await page.locator("#status").textContent(), await page.evaluate(() => t("Please enable model access in Jellytoken first.")));
