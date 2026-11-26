@@ -1868,6 +1868,14 @@ is reported, never terminated. Its default lock location follows
 [`appdir.Config`/`Resolve`](../../internal/appdir/appdir.go), including portable
 data and ignored relative XDG paths; `--lock` overrides the inspected path.
 The app receives the launcher's HOME and configured XDG paths explicitly.
+Nothing else of the launching terminal reaches it: `open` runs with
+`open_env`'s environment (those variables, `MAGPIE_ADDR`, the account and
+locale, and launchd's PATH), as an app opened from Finder has. LaunchServices
+gives a new app the environment of the `open` that asked for it, so run from
+an agent's terminal (Orca sets `CODEX_HOME` to its own Codex folder) the
+installed Jellytool managed that Codex instead of `~/.codex`, and Reconnect
+wrote the other config (11-26). A variable meant for the app goes in
+`PASSED`, passed with `--env` like the data root's.
 
 LaunchServices registering a new PID is not readiness. Success requires the
 requested bundle's new PID to be alive, AppKit's `finishedLaunching` flag to be

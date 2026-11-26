@@ -83,6 +83,27 @@ class LockTests(unittest.TestCase):
 
 
 @unittest.skipUnless(sys.platform == "darwin", "requires macOS AppKit and LaunchServices")
+class OpenEnvTests(unittest.TestCase):
+    def test_terminal_variables_stay_behind(self):
+        env = launcher.open_env({
+            "HOME": "/Users/me", "XDG_CONFIG_HOME": "/x", "MAGPIE_ADDR": "127.0.0.1:1", "USER": "me",
+            "CODEX_HOME": "/orca/codex", "ANTHROPIC_BASE_URL": "http://elsewhere", "ORCA_TAB_ID": "1",
+            "PATH": "/opt/homebrew/bin:/usr/bin",
+        })
+        self.assertEqual(env["HOME"], "/Users/me")
+        self.assertEqual(env["XDG_CONFIG_HOME"], "/x")
+        self.assertEqual(env["MAGPIE_ADDR"], "127.0.0.1:1")
+        self.assertEqual(env["USER"], "me")
+        self.assertEqual(env["PATH"], "/usr/bin:/bin:/usr/sbin:/sbin")
+        for name in ("CODEX_HOME", "ANTHROPIC_BASE_URL", "ORCA_TAB_ID"):
+            self.assertNotIn(name, env)
+
+    def test_open_runs_with_it(self):
+        with patch.dict(launcher.os.environ, {"CODEX_HOME": "/orca/codex"}), patch.object(launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "", "")) as run:
+            launcher.open_build(Path("/A/Jellytool.app"), [], False, Path("/l.log"))
+        self.assertNotIn("CODEX_HOME", run.call_args.kwargs["env"])
+
+
 class NativeLaunchTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -100,6 +121,8 @@ int main() {
  @autoreleasepool {
   NSString *root = [[[[NSBundle mainBundle] bundlePath] stringByDeletingLastPathComponent] stringByDeletingLastPathComponent];
   NSString *mode = [NSString stringWithContentsOfFile:[root stringByAppendingPathComponent:@"mode"] encoding:NSUTF8StringEncoding error:nil];
+  NSString *seen = [NSString stringWithFormat:@"%s\n%s\n", getenv("CODEX_HOME") ?: "", getenv("HOME") ?: ""];
+  [seen writeToFile:[root stringByAppendingPathComponent:@"seen"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
   if ([mode isEqualToString:@"ignore"]) signal(SIGTERM, SIG_IGN);
   int fd = open([[root stringByAppendingPathComponent:@"instance.lock"] fileSystemRepresentation], O_RDWR | O_CREAT, 0600);
   if (flock(fd, LOCK_EX | LOCK_NB)) { fprintf(stderr, "instance lock unavailable\n"); return 23; }
@@ -172,6 +195,16 @@ int main() {
         self.assertEqual(len(second), 1)
         self.assertFalse(set(first) & set(second))
         self.assertEqual(Path(next(iter(second.values()))).resolve(), new)
+
+    def test_app_never_sees_the_terminals_codex_home(self):
+        # an agent's terminal (Orca) sets CODEX_HOME to its own Codex: the
+        # app started from it must manage ~/.codex, as opened from Finder
+        app = self.bundle("env")
+        self.env["CODEX_HOME"] = str(self.root / "orca-codex")
+        self.invoke(app)
+        seen = (self.root / "seen").read_text().split("\n")
+        self.assertEqual(seen[0], "", "CODEX_HOME reached the app")
+        self.assertEqual(seen[1], self.env["HOME"])
 
     def test_startup_failure_is_not_success_or_retried(self):
         app = self.bundle("fail")

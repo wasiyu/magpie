@@ -216,11 +216,34 @@ def finished_launching(pid: int) -> bool:
     return result.stdout.strip() == "true"
 
 
+# What a launch passes on: the data root's variables, which the lock we
+# inspect depends on, and the gateway's address.
+PASSED = ("HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "MAGPIE_ADDR")
+# What `open` itself runs with besides those: the account and locale, as
+# launchd gives an app opened from Finder.
+SESSION = ("USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "__CF_USER_TEXT_ENCODING")
+
+
+def open_env(environ=None) -> dict[str, str]:
+    """The environment `open` runs with: Finder's, not this terminal's.
+
+    LaunchServices gives a newly started app the environment of the `open`
+    that asked for it. Run from an agent's terminal, that was the terminal's
+    own: CODEX_HOME (Orca's Codex folder), ANTHROPIC_BASE_URL and the like.
+    Jellytool then managed that Codex instead of ~/.codex, the Codex app's,
+    and Reconnect wrote the other one's config (11-26).
+    """
+    environ = os.environ if environ is None else environ
+    env = {name: environ[name] for name in PASSED + SESSION if name in environ}
+    env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+    return env
+
+
 def open_build(app: Path, args: list[str], dry: bool, log: Path) -> subprocess.CompletedProcess:
     command = ["open", str(app)]
     command += ["--stdout", str(log), "--stderr", str(log)]
     # Keep the launched app's data root consistent with the lock we inspect.
-    for name in ("HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "MAGPIE_ADDR"):
+    for name in PASSED:
         if name in os.environ:
             command += ["--env", f"{name}={os.environ[name]}"]
     if args:
@@ -228,7 +251,7 @@ def open_build(app: Path, args: list[str], dry: bool, log: Path) -> subprocess.C
     print("launch: " + " ".join(command))
     if dry:
         return subprocess.CompletedProcess(command, 0, "", "")
-    return subprocess.run(command, capture_output=True, text=True, check=False, timeout=10)
+    return subprocess.run(command, capture_output=True, text=True, check=False, timeout=10, env=open_env())
 
 
 def launch(app: Path, ident: str, lock: Path, args: list[str], timeout: float, dry: bool) -> int:
