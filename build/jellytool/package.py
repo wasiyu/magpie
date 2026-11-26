@@ -67,11 +67,17 @@ shutil.copyfile(root / 'docs/plans/jellytool-model-recommendations.md', output.p
 shutil.copyfile(root / 'LICENSE', resources / 'LICENSE')
 intro, separator, notices = (root / 'THIRD_PARTY_NOTICES').read_text().partition('\n----------------')
 (resources / 'THIRD_PARTY_NOTICES').write_text(intro.replace('magpie', 'Jellytool') + separator + notices)
+# Finder shows the bundle's file name unless the bundle names itself per
+# language. macOS uses the localized name only while the file name matches
+# the plain CFBundleDisplayName, so both stay Jellytool (the path updates use).
+for lang in ["Base", "en", "zh-Hans", "zh_CN", "zh-Hant", "zh_TW", "ja", "de"]:
+    (resources / f'{lang}.lproj').mkdir()
+    (resources / f'{lang}.lproj/InfoPlist.strings').write_text('CFBundleName = "Jellytoken助手";\nCFBundleDisplayName = "Jellytoken助手";\n', encoding='utf-8')
 with (output / 'Contents/Info.plist').open('wb') as f:
     plistlib.dump({'CFBundleName': 'Jellytool', 'CFBundleDisplayName': 'Jellytool',
                   'CFBundleIdentifier': 'com.jellytoken.jellytool.dev', 'CFBundleExecutable': 'jellytool',
                   'CFBundleIconFile': 'jellytool.icns', 'CFBundlePackageType': 'APPL',
                   'CFBundleShortVersionString': args.version if args.version != 'dev' else '0.0.0',
                   'CFBundleVersion': args.build or (args.version if args.version != 'dev' else '0.0.0'),
-                  'LSMinimumSystemVersion': '12.0', 'NSHighResolutionCapable': True}, f)
+                  'LSMinimumSystemVersion': '12.0', 'NSHighResolutionCapable': True, 'LSHasLocalizedDisplayName': True}, f)
 print(output)

@@ -123,7 +123,7 @@ def archive_package(package_dir, target):
         (package_dir / "Applications").symlink_to("/Applications", target_is_directory=True)
         archive = package_dir.with_suffix(".dmg")
         subprocess.run([
-            "hdiutil", "create", "-volname", "Jellytool - 拖入 Applications 安装",
+            "hdiutil", "create", "-volname", "Jellytoken助手 - 拖入 Applications 安装",
             "-srcfolder", str(package_dir), "-size", "512m", "-format", "UDZO", str(archive),
         ], check=True)
     elif target.startswith("windows/"):
@@ -131,7 +131,7 @@ def archive_package(package_dir, target):
         script = package_dir.parent / (package_dir.name + ".nsi")
         script.write_text(r'''Unicode true
 !include "MUI2.nsh"
-Name "Jellytool"
+Name "Jellytoken助手"
 OutFile "ARCHIVE"
 InstallDir "$LOCALAPPDATA\Programs\Jellytool"
 RequestExecutionLevel user
@@ -145,11 +145,13 @@ Section
 SetOutPath "$INSTDIR"
 File /r "SOURCE/*"
 WriteUninstaller "$INSTDIR\Uninstall.exe"
-CreateShortcut "$SMPROGRAMS\Jellytool.lnk" "$INSTDIR\Jellytool.exe"
-WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jellytool" "DisplayName" "Jellytool"
+Delete "$SMPROGRAMS\Jellytool.lnk"
+CreateShortcut "$SMPROGRAMS\Jellytoken助手.lnk" "$INSTDIR\Jellytool.exe"
+WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jellytool" "DisplayName" "Jellytoken助手"
 WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jellytool" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
 SectionEnd
 Section "Uninstall"
+Delete "$SMPROGRAMS\Jellytoken助手.lnk"
 Delete "$SMPROGRAMS\Jellytool.lnk"
 Delete "$INSTDIR\Jellytool.exe"
 Delete "$INSTDIR\Uninstall.exe"
@@ -157,7 +159,7 @@ RMDir /r "$INSTDIR\jellytool-resources"
 RMDir "$INSTDIR"
 DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jellytool"
 SectionEnd
-'''.replace("ARCHIVE", str(archive)).replace("SOURCE", str(package_dir)))
+'''.replace("ARCHIVE", str(archive)).replace("SOURCE", str(package_dir)), encoding="utf-8-sig")
         try:
             subprocess.run(["makensis", str(script)], check=True)
         finally:
@@ -207,6 +209,13 @@ def build_target(root, go, target, bun, staging, args, env, host):
     copy_common_files(root, package_dir, resources)
     if goos == "darwin":
         stage_icon(root, app / "Contents/Resources")
+        # Finder shows the bundle's file name unless the bundle names itself
+        # per language. macOS uses it only while the file name matches the
+        # plain CFBundleDisplayName, so both stay Jellytool (the path updates use).
+        for lang in ["Base", "en", "zh-Hans", "zh_CN", "zh-Hant", "zh_TW", "ja", "de"]:
+            strings = app / "Contents/Resources" / f"{lang}.lproj/InfoPlist.strings"
+            strings.parent.mkdir(parents=True, exist_ok=True)
+            strings.write_text('CFBundleName = "Jellytoken助手";\nCFBundleDisplayName = "Jellytoken助手";\n', encoding="utf-8")
         import plistlib
         with (app / "Contents/Info.plist").open("wb") as stream:
             plistlib.dump({
@@ -215,7 +224,7 @@ def build_target(root, go, target, bun, staging, args, env, host):
                 "CFBundleIconFile": "jellytool.icns", "CFBundlePackageType": "APPL",
                 "CFBundleShortVersionString": args.version if args.version != "dev" else "0.0.0",
                 "CFBundleVersion": args.build or (args.version if args.version != "dev" else "0.0.0"),
-                "LSMinimumSystemVersion": "12.0", "NSHighResolutionCapable": True,
+                "LSMinimumSystemVersion": "12.0", "NSHighResolutionCapable": True, "LSHasLocalizedDisplayName": True,
             }, stream)
     return archive_package(package_dir, target)
 

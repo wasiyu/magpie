@@ -109,7 +109,7 @@ function routingPage(part) {
   logo.setAttribute("class", "rt-bird");
   logo.innerHTML = '<use href="#bird"/>';
   const hubSub = el("small"), chip = el("i");
-  hub.append(logo, el("b", "", window.bootPrefs?.jellytool ? "Jellytool" : "magpie"), hubSub, chip);
+  hub.append(logo, el("b", "", window.bootPrefs?.jellytool ? "Jellytoken助手" : "magpie"), hubSub, chip);
   const list = el("ol", "rt-accts");
   // the magpies fly over the nodes, the wires run under them
   const sky = document.createElementNS(NS, "svg");

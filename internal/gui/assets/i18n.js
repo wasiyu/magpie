@@ -17521,9 +17521,9 @@ const I18N = {
     "{n} of {m} setup steps done": "{n} von {m} Einrichtungsschritten fertig",
     "Agent to use": "Verwendeter Agent",
     "After connecting, reopen {agent} as advised on the Agents page so it reads the new configuration.": "Öffnen Sie {agent} nach dem Verbinden gemäß dem Hinweis auf der Agenten-Seite erneut, damit die neue Konfiguration geladen wird.",
-    "In Claude Code, enter /model and choose Opus, Sonnet or Haiku. Set the model behind each tier on Jellytool's Agents page.": "Geben Sie in Claude Code /model ein und wählen Sie Opus, Sonnet oder Haiku. Das tatsächliche Modell jeder Stufe legen Sie auf Jellytools Agenten-Seite fest.",
+    "In Claude Code, enter /model and choose Opus, Sonnet or Haiku. Set the model behind each tier on Jellytool's Agents page.": "Geben Sie in Claude Code /model ein und wählen Sie Opus, Sonnet oder Haiku. Das tatsächliche Modell jeder Stufe legen Sie auf der Agenten-Seite von Jellytool fest.",
     "In Codex CLI, enter /model and select a model provided by Jellytool. In the Codex app or IDE extension, use the conversation's model picker.": "Geben Sie in Codex CLI /model ein und wählen Sie ein von Jellytool bereitgestelltes Modell. In der Codex-App oder IDE-Erweiterung verwenden Sie die Modellauswahl im Gespräch.",
-    "Set {agent}'s starting model on Jellytool's Agents page, then start a new {agent} session.": "Legen Sie das Startmodell für {agent} auf Jellytools Agenten-Seite fest und starten Sie anschließend eine neue Sitzung in {agent}.",
+    "Set {agent}'s starting model on Jellytool's Agents page, then start a new {agent} session.": "Legen Sie das Startmodell für {agent} auf der Agenten-Seite von Jellytool fest und starten Sie anschließend eine neue Sitzung in {agent}.",
     "Open {agent}'s model picker with {cmd} and select a model provided by Jellytool.": "Öffnen Sie in {agent} die Modellauswahl mit {cmd} und wählen Sie ein von Jellytool bereitgestelltes Modell.",
     "Open the model picker in {agent}'s conversation window and select a model provided by Jellytool.": "Öffnen Sie die Modellauswahl im Gesprächsfenster von {agent} und wählen Sie ein von Jellytool bereitgestelltes Modell.",
     "Start a new conversation and send a short message, such as \"Hello\". Keep Jellytool running while using its models.": "Starten Sie ein neues Gespräch und senden Sie eine kurze Nachricht, etwa „Hallo“. Lassen Sie Jellytool während der Modellnutzung laufen.",
@@ -17572,7 +17572,7 @@ const I18N = {
     "Supplier selections are saved here; connecting, changing the WorkBuddy model list and disconnecting happen on the Agents page. Saving this page does not change Agent files.": "Hier wird die Anbieterauswahl gespeichert. Verbinden, die WorkBuddy-Modellliste ändern und Trennen erfolgen auf der Agent-Seite. Speichern hier ändert keine Agent-Dateien.",
     "No models? Check your key and account permissions, then Fetch models again. An empty Recommendations tab is normal; choose from All models.": "Keine Modelle? Prüfe Schlüssel und Kontoberechtigungen und lade die Modelle erneut. Eine leere Empfehlungsansicht ist normal; wähle unter „Alle Modelle“.",
     "Before connecting, back up WorkBuddy’s models.json. Existing magpie and other provider entries are kept. A model ID already owned by another provider must be removed from this selection.": "Sichere vor dem Verbinden WorkBuddys models.json. Vorhandene magpie- und andere Anbietereinträge bleiben erhalten. Entferne IDs anderer Anbieter aus dieser Auswahl.",
-    "To restore, quit WorkBuddy, preview the disconnect on the Agents page, then disconnect. Later edits to other providers are kept. If restoration fails, keep Jellytool’s data and retry after fixing the reported problem.": "Beende zum Wiederherstellen WorkBuddy, prüfe die Trennvorschau auf der Agent-Seite und trenne dann. Spätere Änderungen anderer Anbieter bleiben erhalten. Bei Fehlern Jellytool-Daten behalten, das gemeldete Problem beheben und erneut versuchen.",
+    "To restore, quit WorkBuddy, preview the disconnect on the Agents page, then disconnect. Later edits to other providers are kept. If restoration fails, keep Jellytool’s data and retry after fixing the reported problem.": "Beende zum Wiederherstellen WorkBuddy, prüfe die Trennvorschau auf der Agent-Seite und trenne dann. Spätere Änderungen anderer Anbieter bleiben erhalten. Bei Fehlern die Daten von Jellytool behalten, das gemeldete Problem beheben und erneut versuchen.",
     "Closing the window keeps Jellytool running in the menu bar. Use its icon to reopen or quit. Quitting stops requests from connected Agents.": "Nach dem Schließen des Fensters läuft Jellytool im Statusbereich weiter. Das Symbol öffnet das Fenster oder beendet die App. Beenden stoppt Anfragen verbundener Agents.",
     "No models selected — choose models and Save.": "Keine Modelle ausgewählt – Modelle wählen und speichern.",
     "Sign in to add or replace your API key. Choose text models below, then Save. Cancel discards model changes.": "Mit „Anmelden“ kannst du den API-Schlüssel hinzufügen oder ersetzen. Wähle unten Textmodelle und speichere. Abbrechen verwirft Modelländerungen.",
@@ -23184,24 +23184,25 @@ function dateFmt(opts) {
   return f;
 }
 
+const productName = "Jellytoken助手"; // Jellytool's display name, as product.Name in Go
 // Brand only known prose templates, before inserting names, commands or paths
 // supplied by users/plugins. The underlying translation keys and protocol stay
 // compatible with upstream and with plugins loaded after this file.
 function productText(s, key = s) {
   if (!window.bootPrefs?.jellytool) return s;
   if (/what agents call the gateway|model_provider|remote magpie|(?:another|other|that) computer['’]s magpie|magpie community|written for magpie|existing magpie|one server, magpie|server (?:in the library is )?(?:called|named) magpie|has (?:an MCP server called|its own) magpie|folder named magpie/i.test(key)) return s;
-  s = s.replace(/Little Magpie|小鹊|小鵲/g, "Jellytool");
-  if (key.includes("Little Magpie")) s = s.replace(/[Dd]ie kleine Elster/g, "Jellytool").replace(/der Elster/g, "von Jellytool");
+  s = s.replace(/Little Magpie|小鹊|小鵲/g, productName);
+  if (key.includes("Little Magpie")) s = s.replace(/[Dd]ie kleine Elster/g, productName).replace(/der Elster/g, "von " + productName);
   // German compounds are prose; identifiers already present in the source key
   // (sk-magpie-*, X-Magpie-*) still keep their spelling.
-  if (!/magpie-/i.test(key)) s = s.replace(/magpie(?=-[A-Z])/gi, "Jellytool");
+  if (!/magpie-/i.test(key)) s = s.replace(/magpie(?=-[A-Z])/gi, productName);
   if (key.startsWith("{env}=magpie")) s = s.replace("=magpie", "=jellytool");
   if (key.includes("~/.config/magpie/providers.json")) s = s.replaceAll("~/.config/magpie/providers.json", "~/.config/jellytool/providers.json");
   return s.replace(/magpie/gi, (word, at) => {
     const before = s[at - 1] || "", after = s.slice(at + word.length);
     if (/[\w./\\@-]/.test(before) || /^[\w/\\-]|^\.[^\s]|^:\/\//.test(after)) return word;
     if (/run magpie|magpie command|links magpie|in a new terminal, magpie/i.test(key)) return "jellytool";
-    return /^ (app|gui|tray|panel|tui|web|serve|daemon|help|version|licenses|ls|list|provider|providers|presets|model|models|visible|group|groups|account|accounts|quota|quotas|usage|library|lib|plugin|plugins|search|tool|tools|backup|restore|webdav|s3|github|autostart|healthcheck|heap|cpu|goroutines|statusline|claude-code|agy|codex|claude)\b/.test(after) ? "jellytool" : "Jellytool";
+    return /^ (app|gui|tray|panel|tui|web|serve|daemon|help|version|licenses|ls|list|provider|providers|presets|model|models|visible|group|groups|account|accounts|quota|quotas|usage|library|lib|plugin|plugins|search|tool|tools|backup|restore|webdav|s3|github|autostart|healthcheck|heap|cpu|goroutines|statusline|claude-code|agy|codex|claude)\b/.test(after) ? "jellytool" : productName;
   });
 }
 
@@ -23211,28 +23212,31 @@ function productText(s, key = s) {
 function productText(s, key = s) {
   if (!window.bootPrefs?.jellytool) return s;
   if (/what agents call the gateway|model_provider|remote magpie|(?:another|other|that) computer['’]s magpie|magpie community|written for magpie|existing magpie|one server, magpie|server (?:in the library is )?(?:called|named) magpie|has (?:an MCP server called|its own) magpie|folder named magpie/i.test(key)) return s;
-  s = s.replace(/Little Magpie|小鹊|小鵲/g, "Jellytool");
-  if (key.includes("Little Magpie")) s = s.replace(/[Dd]ie kleine Elster/g, "Jellytool").replace(/der Elster/g, "von Jellytool");
+  s = s.replace(/Little Magpie|小鹊|小鵲/g, productName);
+  if (key.includes("Little Magpie")) s = s.replace(/[Dd]ie kleine Elster/g, productName).replace(/der Elster/g, "von " + productName);
   // German compounds are prose; identifiers already present in the source key
   // (sk-magpie-*, X-Magpie-*) still keep their spelling.
-  if (!/magpie-/i.test(key)) s = s.replace(/magpie(?=-[A-Z])/gi, "Jellytool");
+  if (!/magpie-/i.test(key)) s = s.replace(/magpie(?=-[A-Z])/gi, productName);
   if (key.startsWith("{env}=magpie")) s = s.replace("=magpie", "=jellytool");
   if (key.includes("~/.config/magpie/providers.json")) s = s.replaceAll("~/.config/magpie/providers.json", "~/.config/jellytool/providers.json");
   return s.replace(/magpie/gi, (word, at) => {
     const before = s[at - 1] || "", after = s.slice(at + word.length);
     if (/[\w./\\@-]/.test(before) || /^[\w/\\-]|^\.[^\s]|^:\/\//.test(after)) return word;
     if (/run magpie|magpie command|links magpie|in a new terminal, magpie/i.test(key)) return "jellytool";
-    return /^ (app|gui|tray|panel|tui|web|serve|daemon|help|version|licenses|ls|list|provider|providers|presets|model|models|visible|group|groups|account|accounts|quota|quotas|usage|library|lib|plugin|plugins|search|tool|tools|backup|restore|webdav|s3|github|autostart|healthcheck|heap|cpu|goroutines|statusline|claude-code|agy|codex|claude)\b/.test(after) ? "jellytool" : "Jellytool";
+    return /^ (app|gui|tray|panel|tui|web|serve|daemon|help|version|licenses|ls|list|provider|providers|presets|model|models|visible|group|groups|account|accounts|quota|quotas|usage|library|lib|plugin|plugins|search|tool|tools|backup|restore|webdav|s3|github|autostart|healthcheck|heap|cpu|goroutines|statusline|claude-code|agy|codex|claude)\b/.test(after) ? "jellytool" : productName;
   });
 }
 
 function t(s, vars) {
   // These provider labels already arrive branded from Go. Resolve their
   // original translation keys before applying the display name.
-  const key = window.bootPrefs?.jellytool && s === "Jellytool's key" ? "magpie's key"
-    : window.bootPrefs?.jellytool && s === "Jellytool API" ? "magpie API" : s;
+  const key = window.bootPrefs?.jellytool && s === productName + "'s key" ? "magpie's key"
+    : window.bootPrefs?.jellytool && s === productName + " API" ? "magpie API" : s;
   let out = I18N[locale]?.[key] ?? key;
   if (key === "magpie" || key in I18N.zh) out = productText(out, key);
+  // Jellytool's own templates name the app by its old word; show the display
+  // name; identifiers and paths (jellytool-image, Jellytool.app) stay.
+  if (window.bootPrefs?.jellytool) out = out.replace(/\bJellytool(?![\w-]|\.\w)/g, productName);
   if (vars) for (const k in vars) out = out.split("{" + k + "}").join(vars[k]);
   return out;
 }

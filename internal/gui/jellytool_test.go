@@ -106,14 +106,14 @@ func TestJellytoolPage(t *testing.T) {
 	if bytes.Contains(page, []byte(`<title>magpie</title>`)) {
 		t.Fatal("page kept magpie title")
 	}
-	if !bytes.Contains(page, []byte(`name="apple-mobile-web-app-title" content="Jellytool"`)) {
+	if !bytes.Contains(page, []byte(`name="apple-mobile-web-app-title" content="Jellytoken助手"`)) {
 		t.Fatal("home-screen title kept the upstream name")
 	}
 	h := jellytoolFixture(t)
 	for _, path := range []string{"/", "/index.html"} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
-		if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("<title>Jellytool</title>")) {
+		if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte("<title>Jellytoken助手</title>")) {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
 	}
@@ -123,7 +123,7 @@ func TestJellytoolPage(t *testing.T) {
 		Name      string `json:"name"`
 		ShortName string `json:"short_name"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &manifest); err != nil || manifest.Name != "Jellytool" || manifest.ShortName != "Jellytool" {
+	if err := json.Unmarshal(w.Body.Bytes(), &manifest); err != nil || manifest.Name != "Jellytoken助手" || manifest.ShortName != "Jellytoken助手" {
 		t.Fatalf("manifest = %s (%v)", w.Body, err)
 	}
 }
@@ -150,7 +150,7 @@ func TestJellytoolHomeScreenIcon(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
 	r.Header.Set("Accept", "text/html")
 	h.ServeHTTP(w, r)
-	if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "<h1>Jellytool web</h1>") {
+	if w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "<h1>Jellytoken助手 web</h1>") {
 		t.Fatalf("sign-in page: %d %s", w.Code, w.Body)
 	}
 }

@@ -26,20 +26,20 @@ test("Jellytool brands translated templates without rewriting user data or proto
     vm.runInContext(`locale = ${JSON.stringify(lang)}`, ctx);
     for (const key of ["Disconnect from magpie", "Plugins extend magpie", "Set by magpie", "Empty magpie's trash?", "magpie masked these on this computer", "Little Magpie's notebook", "Give agents Magpie Image…"]) {
       const text = say(key);
-      assert(text.includes("Jellytool"), `${lang}: ${key}: ${text}`);
+      assert(text.includes("Jellytoken助手"), `${lang}: ${key}: ${text}`);
       assert(!/magpie|小鹊|小鵲/i.test(text), text);
     }
     const text = say("{agent} is connected to magpie", { agent: "my-magpie-agent" });
-    assert(text.includes("my-magpie-agent") && text.includes("Jellytool"), "user-supplied names stay literal");
+    assert(text.includes("my-magpie-agent") && text.includes("Jellytoken助手"), "user-supplied names stay literal");
     const literal = say("{agent} is connected to magpie", { agent: "magpie" });
-    assert(literal.includes("magpie") && literal.includes("Jellytool"), "an exact old-brand user name stays literal too");
-    assert.equal(say("Jellytool's key"), say("magpie's key"), "branded provider labels still translate");
+    assert(literal.includes("magpie") && literal.includes("Jellytoken助手"), "an exact old-brand user name stays literal too");
+    assert.equal(say("Jellytoken助手's key"), say("magpie's key"), "branded provider labels still translate");
     assert(say("Reported by the app that made it, through POST /v1/magpie/usage/requests: the call went straight to its vendor, not through magpie.").includes("/v1/magpie/usage/requests"));
-    assert(!say("Written for magpie by its community, in github.com/magpie-community/plugins").includes("Jellytool"));
-    assert(!say("Before connecting, back up WorkBuddy’s models.json. Existing magpie and other provider entries are kept. A model ID already owned by another provider must be removed from this selection.").includes("Jellytool"));
+    assert(!say("Written for magpie by its community, in github.com/magpie-community/plugins").includes("Jellytoken助手"));
+    assert(!say("Before connecting, back up WorkBuddy’s models.json. Existing magpie and other provider entries are kept. A model ID already owned by another provider must be removed from this selection.").includes("Jellytoken助手"));
     assert(say("{sent} is a routing group of the remote magpie, and it routed the request to {served}: the group picking one of its models, not the vendor swapping the model.").includes("magpie"));
     const notice = vm.runInContext(`tNotice("magpie couldn't ask Custom magpie to quit. Quit it yourself, then open it again.")`, ctx);
-    assert(notice.includes("Jellytool") && notice.includes("Custom magpie"), "notices brand the template before filling its agent slot");
+    assert(notice.includes("Jellytoken助手") && notice.includes("Custom magpie"), "notices brand the template before filling its agent slot");
   }
   assert.equal(say("unknown plugin text about magpie"), "unknown plugin text about magpie");
   vm.runInContext('window.bootPrefs.jellytool = false; locale = "en"', ctx);
@@ -139,12 +139,12 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
           await page.route("**/*", server(lang, true));
           await page.goto("http://jellytool.test/?view=agents");
           await page.locator('.row.agent[data-id="codex"]').waitFor();
-          assert.equal(await page.title(), "Jellytool");
+          assert.equal(await page.title(), "Jellytoken助手");
           assert.equal(await page.locator('.side-top #sideToggle').count(), width === 1100 ? 1 : 0);
           assert.equal(await page.locator('#sideToggle').getAttribute('aria-label'), await page.evaluate((key) => t(key), width === 1100 ? "Hide sidebar" : "Show sidebar"));
-          assert((await page.locator("#view-agents").innerText()).includes("Jellytool"));
+          assert((await page.locator("#view-agents").innerText()).includes("Jellytoken助手"));
           assert(!/magpie/i.test(await page.locator("#view-agents").innerText()));
-          assert((await page.locator(".ag-conn").getAttribute("aria-label")).includes("Jellytool"));
+          assert((await page.locator(".ag-conn").getAttribute("aria-label")).includes("Jellytoken助手"));
           await page.locator("#prefs").click();
           await page.evaluate(() => setSetTab("about"));
           await page.waitForFunction(() => document.querySelector("#about")?.textContent.includes("www.jellytoken.com"));

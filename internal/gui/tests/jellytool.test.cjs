@@ -24,7 +24,7 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await context.request.post(url + "/api/provider/save", { data: { id: "jellytoken", models: [], noModels: true } });
       await page.goto(url + "/?view=providers");
       await page.waitForFunction(() => document.querySelector("#view-providers")?.hidden === false && document.body.textContent.includes("Jellytoken"));
-      assert.equal(await page.title(), "Jellytool");
+      assert.equal(await page.title(), "Jellytoken助手");
       assert.equal(await page.locator('link[rel="icon"]').getAttribute("href"), "icons/jellytoken.png");
       assert(await page.locator(".brand .logo img").evaluate((img) => img.complete && img.naturalWidth === 256));
       assert.deepEqual(await page.evaluate(() => [...document.body.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent.trim()).filter(Boolean)), []);

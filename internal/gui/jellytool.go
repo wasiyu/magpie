@@ -17,6 +17,7 @@ import (
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/lazyre"
 	"github.com/yetone/magpie/internal/plugin"
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/provider"
 )
 
@@ -209,7 +210,7 @@ func jellytoolHandler(w Windows, gw *gateway.Server) http.Handler {
 			b, _ := assets.ReadFile("assets/manifest.json")
 			var manifest map[string]any
 			_ = json.Unmarshal(b, &manifest)
-			manifest["name"], manifest["short_name"] = "Jellytool", "Jellytool"
+			manifest["name"], manifest["short_name"] = product.Name, product.Name
 			manifest["icons"] = []map[string]string{{"src": "icons/jellytoken.png", "sizes": "256x256", "type": "image/png"}}
 			b, _ = json.Marshal(manifest)
 			rw.Header().Set("Content-Type", "application/manifest+json")
@@ -361,10 +362,10 @@ var jellytoolBrandLogo = lazyre.New(`(?s)<span class="logo"[^>]*>.*?</span>`)
 func jellytoolPage() []byte {
 	b, _ := assets.ReadFile("assets/index.html")
 	b = jellytoolBrandLogo.ReplaceAll(b, []byte(`<span class="logo" aria-hidden="true"><img src="icons/jellytoken.png" width="22" height="22" alt=""></span>`))
-	s := strings.ReplaceAll(string(b), "<title>magpie</title>", "<title>Jellytool</title>")
+	s := strings.ReplaceAll(string(b), "<title>magpie</title>", "<title>"+product.Name+"</title>")
 	s = strings.ReplaceAll(s, `href="icons/favicon.svg" type="image/svg+xml"`, `href="icons/jellytoken.png" type="image/png"`)
-	s = strings.ReplaceAll(s, "<span>magpie</span>", "<span>Jellytool</span>")
-	s = strings.ReplaceAll(s, `content="magpie"`, `content="Jellytool"`)
+	s = strings.ReplaceAll(s, "<span>magpie</span>", "<span>"+product.Name+"</span>")
+	s = strings.ReplaceAll(s, `content="magpie"`, `content="`+product.Name+`"`)
 	s = strings.ReplaceAll(s, `href="icons/apple-touch-icon.png"`, `href="icons/jellytoken.png"`)
 	s = strings.Replace(s, "</head>", `<link rel="stylesheet" href="jellytool.css"></head>`, 1)
 	s = strings.Replace(s, `<script src="start.js"></script>`, `<script src="jellytool-model-config.js"></script><script src="jellytool.js"></script><script src="start.js"></script>`, 1)

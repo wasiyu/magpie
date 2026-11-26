@@ -4,8 +4,8 @@ import "testing"
 
 func TestDisplayText(t *testing.T) {
 	for _, tc := range []struct{ text, jellytool string }{
-		{"Open magpie", "Open Jellytool"},
-		{"magpie's models. Restart magpie.", "Jellytool's models. Restart Jellytool."},
+		{"Open magpie", "Open Jellytoken助手"},
+		{"magpie's models. Restart magpie.", "Jellytoken助手's models. Restart Jellytoken助手."},
 		{"magpie web --help", "jellytool web --help"},
 		{"Run magpie in a terminal", "Run jellytool in a terminal"},
 		{"  magpie snow <model>", "  jellytool snow <model>"},

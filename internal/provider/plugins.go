@@ -18,6 +18,7 @@ import (
 	"github.com/yetone/magpie/internal/lazyre"
 	"github.com/yetone/magpie/internal/plugin"
 	"github.com/yetone/magpie/internal/probelog"
+	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/settings"
 )
 
@@ -600,7 +601,7 @@ func pluginProviderServing(pp plugin.Provider, l pluginLogin, keys []string) Pro
 		name = pp.ID
 	}
 	if pp.ID == "jellytoken" {
-		name = "Jellytool"
+		name = product.Name
 	}
 	a := &Account{Agent: "plugin", User: user, Plan: l.Plan, Stream: true, plugin: &pp, pluginKey: acct.Key}
 	if pp.ID == "grok" {

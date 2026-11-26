@@ -40,7 +40,7 @@ func RunJellytool(version string) error {
 	// handling to the bundle ID. Failure never falls through to an unlocked run.
 	unlock, held := filelock.Lock(filepath.Join(appdir.Config(), "jellytool-instance.lock"), time.Millisecond)
 	if !held {
-		return errors.New("Jellytool is already running or its data directory cannot be locked")
+		return errors.New(product.Name + " is already running or its data directory cannot be locked")
 	}
 	defer unlock()
 	if err := ensureJellytoolModelConfig(); err != nil {
@@ -100,11 +100,11 @@ func RunJellytool(version string) error {
 	}
 	defer stop()
 	h.app = application.New(application.Options{
-		Name: "Jellytool", Description: "Jellytoken for your coding agents", Icon: jellytoolAppIcon(),
+		Name: product.Name, Description: "Jellytoken for your coding agents", Icon: jellytoolAppIcon(),
 		Assets:     application.AssetOptions{Handler: ownWindow(Handler(h, gw))},
 		Mac:        application.MacOptions{ActivationPolicy: application.ActivationPolicyRegular, ApplicationShouldTerminateAfterLastWindowClosed: false},
 		Windows:    application.WindowsOptions{WebviewUserDataPath: appdir.WebView()},
-		Linux:      application.LinuxOptions{ProgramName: "jellytool"},
+		Linux:      application.LinuxOptions{ProgramName: "jellytool", ApplicationID: "org.wails.Jellytool"}, // the id Wails derived from the old Name
 		OnShutdown: stop,
 	})
 	h.app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
@@ -116,12 +116,12 @@ func RunJellytool(version string) error {
 				if ctx.Err() != nil {
 					return
 				}
-				runtimeFailed <- errors.New("Jellytool bundled plugin stopped; restart Jellytool")
+				runtimeFailed <- errors.New(product.Name + " bundled plugin stopped; restart " + product.Name)
 				h.app.Quit()
 			}
 		}()
 	})
-	h.main = h.app.Window.NewWithOptions(application.WebviewWindowOptions{Name: "jellytool-main", Title: "Jellytool", Width: 1100, Height: 760, URL: "/"})
+	h.main = h.app.Window.NewWithOptions(application.WebviewWindowOptions{Name: "jellytool-main", Title: product.Name, Width: 1100, Height: 760, URL: "/"})
 	h.setupJellytoolTray(version)
 	err = h.app.Run()
 	stop()
@@ -151,9 +151,9 @@ func (h *jellytoolWindow) setupJellytoolTray(version string) {
 	quit := menu.Add("").OnClick(func(*application.Context) { h.app.Quit() })
 	relabel := func() {
 		labels := trayMenuLabels(trayLang(settings.Load().Lang, systemLang), version, "", false) // Jellytool's tray has no Pause item
-		open.SetLabel(strings.ReplaceAll(labels.open, "magpie", "Jellytool"))
+		open.SetLabel(strings.ReplaceAll(labels.open, "magpie", product.Name))
 		ver.SetLabel(labels.version)
-		quit.SetLabel(strings.ReplaceAll(labels.quit, "magpie", "Jellytool"))
+		quit.SetLabel(strings.ReplaceAll(labels.quit, "magpie", product.Name))
 		menu.Update()
 	}
 	relabel()
@@ -170,7 +170,7 @@ func (h *jellytoolWindow) setupJellytoolTray(version string) {
 			h.tray.SetIcon(icon)
 		})
 	}
-	h.tray.SetTooltip("Jellytool")
+	h.tray.SetTooltip(product.Name)
 	h.tray.SetMenu(menu)
 	// Match magpie's window mode: a primary click opens the main interface.
 	// Wails supplies the menu as the secondary-click action when a menu is set.

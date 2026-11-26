@@ -2,9 +2,9 @@
 // The product wrapper supplies its branding and supplier display priority.
 (() => {
   if (!window.bootPrefs?.jellytool) return;
-  document.title = "Jellytool";
+  document.title = productName;
   const brand = document.querySelector(".brand > span:last-child");
-  if (brand) brand.textContent = "Jellytool";
+  if (brand) brand.textContent = productName;
   pngIcons.add("jellytoken");
   // Reuse the same control, labels, shortcut and saved layout in both places.
   window.jellytoolSideToggle = (b) => {
