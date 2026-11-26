@@ -23235,8 +23235,10 @@ function t(s, vars) {
   let out = I18N[locale]?.[key] ?? key;
   if (key === "magpie" || key in I18N.zh) out = productText(out, key);
   // Jellytool's own templates name the app by its old word; show the display
-  // name; identifiers and paths (jellytool-image, Jellytool.app) stay.
-  if (window.bootPrefs?.jellytool) out = out.replace(/\bJellytool(?![\w-]|\.\w)/g, productName);
+  // name; identifiers and paths (jellytool-image, Jellytool.app) stay. Only
+  // known templates: t() also gets user and plugin values (a routing group's
+  // name, a plugin's quota window), which are shown as written.
+  if (window.bootPrefs?.jellytool && key in I18N.zh) out = out.replace(/\bJellytool(?![\w-]|\.\w)/g, productName);
   if (vars) for (const k in vars) out = out.split("{" + k + "}").join(vars[k]);
   return out;
 }

@@ -34,6 +34,7 @@ test("Jellytool brands translated templates without rewriting user data or proto
     const literal = say("{agent} is connected to magpie", { agent: "magpie" });
     assert(literal.includes("magpie") && literal.includes("Jellytoken助手"), "an exact old-brand user name stays literal too");
     assert.equal(say("Jellytoken助手's key"), say("magpie's key"), "branded provider labels still translate");
+    assert.equal(say("Jellytool team group"), "Jellytool team group", "a user's or plugin's value passed to t() keeps the old word");
     assert(say("Reported by the app that made it, through POST /v1/magpie/usage/requests: the call went straight to its vendor, not through magpie.").includes("/v1/magpie/usage/requests"));
     assert(!say("Written for magpie by its community, in github.com/magpie-community/plugins").includes("Jellytoken助手"));
     assert(!say("Before connecting, back up WorkBuddy’s models.json. Existing magpie and other provider entries are kept. A model ID already owned by another provider must be removed from this selection.").includes("Jellytoken助手"));

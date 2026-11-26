@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"slices"
@@ -362,10 +363,10 @@ var jellytoolBrandLogo = lazyre.New(`(?s)<span class="logo"[^>]*>.*?</span>`)
 func jellytoolPage() []byte {
 	b, _ := assets.ReadFile("assets/index.html")
 	b = jellytoolBrandLogo.ReplaceAll(b, []byte(`<span class="logo" aria-hidden="true"><img src="icons/jellytoken.png" width="22" height="22" alt=""></span>`))
-	s := strings.ReplaceAll(string(b), "<title>magpie</title>", "<title>"+product.Name+"</title>")
+	s := strings.ReplaceAll(string(b), "<title>magpie</title>", "<title>"+html.EscapeString(product.Name)+"</title>")
 	s = strings.ReplaceAll(s, `href="icons/favicon.svg" type="image/svg+xml"`, `href="icons/jellytoken.png" type="image/png"`)
-	s = strings.ReplaceAll(s, "<span>magpie</span>", "<span>"+product.Name+"</span>")
-	s = strings.ReplaceAll(s, `content="magpie"`, `content="`+product.Name+`"`)
+	s = strings.ReplaceAll(s, "<span>magpie</span>", "<span>"+html.EscapeString(product.Name)+"</span>")
+	s = strings.ReplaceAll(s, `content="magpie"`, `content="`+html.EscapeString(product.Name)+`"`)
 	s = strings.ReplaceAll(s, `href="icons/apple-touch-icon.png"`, `href="icons/jellytoken.png"`)
 	s = strings.Replace(s, "</head>", `<link rel="stylesheet" href="jellytool.css"></head>`, 1)
 	s = strings.Replace(s, `<script src="start.js"></script>`, `<script src="jellytool-model-config.js"></script><script src="jellytool.js"></script><script src="start.js"></script>`, 1)
