@@ -1143,6 +1143,8 @@ const DRIFT_WHY = {
   bypassed: "{agent} was used without going through magpie — restart it after applying",
   unreachable: "{agent} is set up, but nothing answers at the address it reaches magpie by",
   proxied: "{agent} reaches magpie through a proxy that doesn't pass its requests on",
+  // Jellytool beside magpie: magpie holds the ChatGPT sign-in's base URL
+  peer: "{peer} holds {agent}'s ChatGPT sign-in now, so its subscription models are missing · Reconnect takes it back",
 };
 
 // an i in a circle: the pill that explains rather than acts
@@ -1414,6 +1416,8 @@ function connectLine(a, kind) {
       say(t("Not connected · goes through magpie only to fail over to your other ChatGPT accounts"));
       words.title = t("magpie set openai_base_url in {agent}'s config.toml, so a request the ChatGPT account {agent} is signed in to has no allowance for goes on to your other ChatGPT accounts on in magpie. {agent} keeps to its own models. To stop it, tick Only switch {agent}'s sign-in under Providers › Codex, or switch those accounts off; connecting {agent} adds magpie's models.", { agent: a.name });
     }
+    // Jellytool beside magpie, with magpie on Codex now: connecting takes it back
+    else if (a.peer) say(t("Not connected · {agent} is on {peer} now · connecting moves it back", { agent: a.name, peer: "magpie" }));
     else if (sw?.p.switchOnly) say(t("Not connected · switching accounts only"));
     // with Claude Magpie made, connecting wires it, not the user's own Desktop (desktopSets; xMopf7RF on X)
     else if (a.isolated?.on) say(t("Not connected · connecting puts Claude Magpie on magpie; your own Claude Desktop stays signed in with Anthropic"));
@@ -1437,7 +1441,7 @@ function connectLine(a, kind) {
     return line;
   }
   if (a.drift) {
-    say(t(DRIFT_WHY[a.drift.kind] || DRIFT_WHY.unwired, { agent: a.name, model: a.drift.want }), "bad");
+    say(t(DRIFT_WHY[a.drift.kind] || DRIFT_WHY.unwired, { agent: a.name, model: a.drift.want, peer: "magpie" }), "bad");
     words.title = tNotice(a.drift.detail) || "";
     line.append(driftFix(a, "Reconnect"));
     return line;

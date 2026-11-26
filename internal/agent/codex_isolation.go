@@ -56,12 +56,27 @@ func codexPeerActive(path, ownURL string) bool {
 		return true
 	}
 	u, _ := edit.GetTOMLTop(path, "openai_base_url")
+	return codexPeerBase(path, u)
+}
+
+// codexPeerBase: an openai_base_url at magpie's gateway, by its table's
+// address or magpie's default port.
+func codexPeerBase(path, u string) bool {
+	u = strings.TrimSuffix(u, "/")
+	if u == "" {
+		return false
+	}
 	peer, _ := edit.GetTOMLTable(path, "model_providers."+codexPeerID())
-	if base := strings.TrimSuffix(peer["base_url"], "/v1"); base != "" && strings.TrimSuffix(u, "/") == base+gateway.CodexPath {
+	if base := strings.TrimSuffix(peer["base_url"], "/v1"); base != "" && u == base+gateway.CodexPath {
 		return true
 	}
-	port := ":3425/"
-	return strings.Contains(u, port) && strings.HasSuffix(strings.TrimSuffix(u, "/"), gateway.CodexPath)
+	return strings.Contains(u+"/", ":3425/") && strings.HasSuffix(u, gateway.CodexPath)
+}
+
+// codexPeerCatalog: a model_catalog_json naming one of magpie's lists.
+func codexPeerCatalog(c string) bool {
+	b := filepath.Base(c)
+	return c != "" && (b == codexPeerID()+"-desktop-models.json" || b == codexPeerID()+"-models.json")
 }
 
 // Jellytool writers share a lock outside the atomically/rollback boundary.

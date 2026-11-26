@@ -283,6 +283,9 @@ type agentJSON struct {
 	// Failover: not connected, yet its requests go through magpie for
 	// account failover alone (agent.Agent.FailingOver, #1385)
 	Failover bool `json:"failover,omitempty"`
+	// Peer: Jellytool beside magpie, and magpie holds the agent now
+	// (agent.Agent.PeerHeld): connecting takes it back
+	Peer bool `json:"peer,omitempty"`
 	// CLIMissing: its settings are here, its CLI isn't (#843), which
 	// the row says with none of its settings offered (#2177), and Install
 	// another agent offers it again where magpie knows how
@@ -3472,6 +3475,7 @@ func state() stateJSON {
 		} else {
 			aj.Source = a.Source()
 			aj.Failover = a.FailingOver != nil && a.FailingOver()
+			aj.Peer = a.PeerHeld != nil && a.PeerHeld()
 		}
 		if a.ID == "codex" && a.WSL == "" {
 			aj.AppSnag = provider.CodexAppSnagged()

@@ -246,6 +246,16 @@ type Agent struct {
 	// Sync takes it out (TylerBai_loveai on X). The Agents page says so,
 	// and the gateway lists it only its own models.
 	FailingOver func() bool
+	// PeerHeld: Jellytool beside magpie, and magpie holds what this agent
+	// would be routed by (Codex's openai_base_url beside the ChatGPT
+	// sign-in). Not connected, the row says so; connected, it is drift of
+	// its own kind ("peer"), and Reconnect takes it back.
+	PeerHeld func() bool
+	// takeOver, while true, is a connect or Reconnect the user asked for:
+	// only then may Jellytool write over what magpie wrote. A Sync or a
+	// background Apply leaves magpie's values alone, or the two would
+	// rewrite each other for good.
+	takeOver *bool
 	// EndFailover takes out what account failover wrote, for magpie
 	// quitting: left there, the agent would be pointed at a gateway that
 	// no longer answers, and retry till magpie is open again (Leon920717

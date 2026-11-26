@@ -37,3 +37,7 @@ func codexPeerActive(path, ownURL string) bool {
 }
 
 func codexIsolated(a *Agent, _ string) *Agent { return a }
+
+// magpie takes nothing over from Jellytool (product.Jellytool alone asks)
+func codexPeerBase(_, _ string) bool { return false }
+func codexPeerCatalog(string) bool   { return false }

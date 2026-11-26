@@ -273,6 +273,15 @@ func codexIn(at place) *Agent {
 	get := func(k string) string { v, _ := edit.GetTOMLTop(path, k); return v }
 	peerActive := func() bool { return codexPeerActive(path, at.v1()) }
 	isolated := func() bool { return product.Jellytool }
+	// taking: a connect or Reconnect the user asked for (Agent.takeOver)
+	taking := new(bool)
+	// peerHolds: Jellytool beside magpie, the routing keys magpie writes
+	// are its: openai_base_url at magpie's gateway, a magpie catalog, magpie
+	// as the provider. Taken over on the user's connect alone (taking),
+	// never put back on a disconnect: magpie keeps its own.
+	peerHolds := func() bool {
+		return isolated() && (codexPeerBase(path, get("openai_base_url")) || codexPeerCatalog(get("model_catalog_json")) || get("model_provider") == codexPeerID())
+	}
 	// this machine's Codex reaches the gateway at the address its config
 	// gives, when that is magpie's on another host: the Codex app on
 	// Windows with its agent in WSL reads Windows' config.toml from WSL,
@@ -1873,8 +1882,14 @@ func codexIn(at place) *Agent {
 				return err
 			}
 			if !routed() {
-				stash(map[string]string{at.key("codex.model"): get("model"), at.key("codex.effort"): get("model_reasoning_effort"),
-					at.key("codex.provider"): get("model_provider"), at.key("codex.catalog"): get("model_catalog_json")})
+				was := map[string]string{at.key("codex.model"): get("model"), at.key("codex.effort"): get("model_reasoning_effort"),
+					at.key("codex.provider"): get("model_provider"), at.key("codex.catalog"): get("model_catalog_json")}
+				// what magpie wrote is magpie's to manage: a disconnect
+				// clears Jellytool's own and puts none of it back
+				if *taking && peerHolds() {
+					was[at.key("codex.model")], was[at.key("codex.provider")], was[at.key("codex.catalog")] = "", "", ""
+				}
+				stash(was)
 			}
 			// a ChatGPT account the Codex app holds (out of allowance and
 			// of credits) keeps it from sending at all, a magpie model's
@@ -1891,8 +1906,10 @@ func codexIn(at place) *Agent {
 			// and keeps the user's spelling in the stash, for Unwire to
 			// put back.
 			p := get("model_provider")
-			ours := asProvider() || p == "" || p == "openai" || isCCSwitchMirror(p)
-			chatgpt := !api() && chatGPT() && (!isolated() || !peerActive() && (get("openai_base_url") == "" || viaBase()))
+			// the user's connect beside magpie takes magpie's keys over
+			takeover := *taking && peerHolds()
+			ours := asProvider() || p == "" || p == "openai" || isCCSwitchMirror(p) || takeover && p == codexPeerID()
+			chatgpt := !api() && chatGPT() && (!isolated() || takeover || !peerActive() && (get("openai_base_url") == "" || viaBase()))
 			if chatgpt && !outOn(v) && ours {
 				forget(at.key("codex.out"))
 				if err := dropProvider(); err != nil {
@@ -2417,8 +2434,11 @@ func codexIn(at place) *Agent {
 			default:
 				return "Codex's config no longer sends its model through magpie (no openai_base_url or model_provider of magpie's), so Codex asks OpenAI for a model OpenAI doesn't have"
 			}
+			// takeTables leaves them alone while isolated (Jellytool beside
+			// magpie, whose gateway they may name): what Reconnect can't
+			// take is no drift, or the row says "config changed" for good
 			for id, u := range ccSwitchTables() {
-				if u != at.v1() {
+				if !isolated() && u != at.v1() {
 					return "Codex's [model_providers." + id + "] sends to " + u + ", not magpie's gateway: a Codex thread started on it goes there when reopened, a magpie model picked in it too"
 				}
 			}
@@ -2702,7 +2722,15 @@ func codexIn(at place) *Agent {
 	}
 	// in a distro too: its way to Windows moves (wslFindVia)
 	a.move = func(from, to string) error { return codexMoveGateway(path, from, to) }
+	a.takeOver = taking
 	if product.Jellytool {
+		// magpie holds Codex: it is the provider, or it holds the base URL
+		// beside a ChatGPT sign-in Jellytool would be on (connected as the
+		// provider only because magpie had it: the subscription's models
+		// out of the app's list)
+		a.PeerHeld = func() bool {
+			return peerActive() || asProvider() && !api() && chatGPT() && codexPeerBase(path, get("openai_base_url"))
+		}
 		return codexIsolated(a, at.v1())
 	}
 	return a

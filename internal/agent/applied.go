@@ -155,7 +155,10 @@ type Drift struct {
 	//              it names the gateway at doesn't answer (#1013);
 	//   "proxied"  the config is right, but the agent sends its requests
 	//              for the gateway through a proxy (Addr) that doesn't
-	//              pass them on to it (codex_proxy.go).
+	//              pass them on to it (codex_proxy.go);
+	//   "peer"     Jellytool beside magpie, and magpie holds what the
+	//              agent would be routed by (PeerHeld): Reconnect takes
+	//              it back.
 	Kind   string `json:"kind"`
 	Field  string `json:"field"`         // the field it shows on
 	Now    string `json:"now,omitempty"` // what that field says now
@@ -225,6 +228,9 @@ func (a *Agent) drift(memo *valueMemo) *Drift {
 	// would write magpie's over it
 	if onMagpie && a.handWired() {
 		return nil
+	}
+	if a.PeerHeld != nil && a.Wired() && a.PeerHeld() {
+		return &Drift{Kind: "peer", Field: on.Key, Now: vals[on.Key], Want: vals[on.Key]}
 	}
 	if a.Check != nil {
 		if d := a.Check(); d != "" {
@@ -490,6 +496,7 @@ func (a *Agent) Reapply() error {
 	if a.Native != nil {
 		return a.Native.Connect()
 	}
+	defer a.takingOver()()
 	d := a.Drift()
 	if d != nil && d.Kind == "unreachable" && d.Move != "" && a.move != nil {
 		return a.move(d.Addr, d.Move)
@@ -522,6 +529,16 @@ func (a *Agent) Reapply() error {
 		}
 	}
 	return nil
+}
+
+// takingOver marks a connect or Reconnect the user asked for (takeOver)
+// until the func it returns is called.
+func (a *Agent) takingOver() func() {
+	if a.takeOver == nil {
+		return func() {}
+	}
+	*a.takeOver = true
+	return func() { *a.takeOver = false }
 }
 
 // Keep takes the agent's config as it is now: what magpie set before is
@@ -626,6 +643,7 @@ func (a *Agent) Pick(key, v string) error {
 		}
 		return a.Apply(key, value)
 	}
+	defer a.takingOver()()
 	// the user's own setting never connects the agent to magpie
 	if f := a.Field(key); f != nil && !f.Own && !a.Wired() {
 		vals := a.Values()
@@ -752,6 +770,7 @@ func (a *Agent) noModelLeft() error {
 
 func (a *Agent) connect() (Connection, error) {
 	forget(a.ID + disconnectedKey)
+	defer a.takingOver()()
 	// what it is on now, for Disconnect to put back what it can't
 	// otherwise (Goose's own model)
 	now := a.Values()

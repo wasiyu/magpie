@@ -113,7 +113,11 @@ func TestCodexIsolationSwitchRoundTrip(t *testing.T) {
 		if err := cx.Disconnect(); err != nil {
 			t.Fatal(err)
 		}
-		for key, want := range map[string]string{"model_provider": "magpie", "model": "fake/m1", "model_catalog_json": "magpie-models.json", "openai_base_url": base} {
+		// magpie's own keys are magpie's to put back: Jellytool's connect
+		// took them over, its disconnect clears its own and restores none
+		// (magpie's base URL, which a sign-in by API key never takes, stays,
+		// and with it Codex is magpie's again: the model is left as it is)
+		for key, want := range map[string]string{"model_provider": "", "model": "fake/m1", "model_catalog_json": "", "openai_base_url": base} {
 			if got, _ := edit.GetTOMLTop(cx.Path, key); got != want {
 				t.Fatalf("round %d: %s = %q, want %q", round, key, got, want)
 			}
@@ -354,11 +358,12 @@ func TestCodexIsolationExternalRewriteAndReconnect(t *testing.T) {
 				if err := cx.Unwire(); err != nil {
 					t.Fatal(err)
 				}
-				if p, _ := edit.GetTOMLTop(cx.Path, "model_provider"); p != "magpie" {
-					t.Fatal("restored stale pre-Jellytool provider", read())
+				// what magpie had written is not put back (magpie manages it)
+				if p, _ := edit.GetTOMLTop(cx.Path, "model_provider"); p != "" {
+					t.Fatal("restored magpie's provider", read())
 				}
-				if m, _ := edit.GetTOMLTop(cx.Path, "model"); m != "fake/m1" {
-					t.Fatal("restored stale pre-Jellytool model", read())
+				if m, _ := edit.GetTOMLTop(cx.Path, "model"); m != "" {
+					t.Fatal("restored magpie's model", read())
 				}
 			}
 		})
@@ -391,4 +396,140 @@ func TestCodexIsolationIncompleteExternalRewrite(t *testing.T) {
 	if read() != complete || cx.Wired() {
 		t.Fatal("did not recover after external write completed")
 	}
+}
+
+// Jellytool leaves cc-switch's tables alone (takeTables returns while
+// isolated), so one pointed at magpie's gateway is no drift of Jellytool's:
+// flagged, Reconnect rewrote nothing and the row stayed "config changed".
+func TestCodexIsolationCCSwitchTableIsNoDrift(t *testing.T) {
+	home, read := codexHome(t, "", "model = \"original\"\n")
+	cx := codex(home)
+	if _, err := cx.ConnectHow(); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(cx.Path, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("\n[model_providers.custom]\nname = \"custom\"\nbase_url = \"http://127.0.0.1:3425/v1\"\nwire_api = \"responses\"\n")
+	f.Close()
+	if !cx.Wired() {
+		t.Fatal("not connected")
+	}
+	if msg := cx.Check(); msg != "" {
+		t.Fatalf("a cc-switch table Jellytool never takes reads as drift: %s", msg)
+	}
+	if err := cx.Reapply(); err != nil {
+		t.Fatal(err)
+	}
+	if tb, _ := edit.GetTOMLTable(cx.Path, "model_providers.custom"); tb["base_url"] != "http://127.0.0.1:3425/v1" {
+		t.Fatal("Reconnect took the cc-switch table", read())
+	}
+}
+
+// magpieBeside is Codex as magpie leaves it beside a ChatGPT sign-in, a CC
+// Switch table taken over by magpie with it (the user's config, 11-26).
+func magpieBeside(t *testing.T) (*Agent, func() string, string) {
+	t.Helper()
+	cfg := "model = \"fake/m1\"\nopenai_base_url = \"http://127.0.0.1:3425" + gateway.CodexPath + "\"\nmodel_catalog_json = \"magpie-desktop-models.json\"\n" +
+		"[model_providers.magpie]\nname = \"magpie\"\nbase_url = \"http://127.0.0.1:3425/v1\"\nexperimental_bearer_token = \"magpie\"\n" +
+		"[model_providers.custom]\nname = \"custom\"\nbase_url = \"http://127.0.0.1:3425/v1\"\nwire_api = \"responses\"\n"
+	home, read := codexHome(t, chatGPTAuth, cfg)
+	if err := os.WriteFile(filepath.Join(home, ".codex", "magpie-desktop-models.json"), []byte(`{"models":[]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return codex(home), read, cfg
+}
+
+// magpie's keys untouched: its table, the CC Switch table it points at itself
+func magpieTablesStand(t *testing.T, cx *Agent, read func() string) {
+	t.Helper()
+	for _, id := range []string{"magpie", "custom"} {
+		if tb, _ := edit.GetTOMLTable(cx.Path, "model_providers."+id); tb["base_url"] != "http://127.0.0.1:3425/v1" {
+			t.Fatalf("[model_providers.%s] changed:\n%s", id, read())
+		}
+	}
+}
+
+// besideSignIn: Jellytool beside the ChatGPT sign-in, the subscription's
+// models in the app's list with its own
+func besideSignIn(t *testing.T, cx *Agent, read func() string) {
+	t.Helper()
+	if u, _ := edit.GetTOMLTop(cx.Path, "openai_base_url"); u != gateway.URL()+gateway.CodexPath {
+		t.Fatalf("openai_base_url not Jellytool's: %s", read())
+	}
+	if p, _ := edit.GetTOMLTop(cx.Path, "model_provider"); p != "" {
+		t.Fatalf("model_provider %q left: Codex's own models out of its list\n%s", p, read())
+	}
+	if c, _ := edit.GetTOMLTop(cx.Path, "model_catalog_json"); filepath.Base(c) == "magpie-desktop-models.json" || filepath.Base(c) == "jellytool-models.json" {
+		t.Fatalf("catalog %s, not the list beside the sign-in:\n%s", c, read())
+	}
+	if !cx.Wired() || cx.PeerHeld() {
+		t.Fatalf("not Jellytool's after the takeover:\n%s", read())
+	}
+	if d := cx.Drift(); d != nil {
+		t.Fatalf("drift after the takeover: %+v", d)
+	}
+}
+
+// Jellytool beside magpie: magpie's routing keys are taken over by the
+// user's connect only, never by a Sync, and a disconnect clears
+// Jellytool's own without putting magpie's back.
+func TestCodexIsolationConnectTakesMagpieBesideSignIn(t *testing.T) {
+	cx, read, cfg := magpieBeside(t)
+	if cx.Wired() || !cx.PeerHeld() {
+		t.Fatal("magpie's connection not told as magpie's")
+	}
+	if err := cx.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if read() != cfg {
+		t.Fatalf("a Sync took magpie's connection:\n%s", read())
+	}
+	if _, err := cx.ConnectHow(); err != nil {
+		t.Fatal(err)
+	}
+	besideSignIn(t, cx, read)
+	magpieTablesStand(t, cx, read)
+	if err := cx.Disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"openai_base_url", "model_catalog_json", "model_provider"} {
+		if v, _ := edit.GetTOMLTop(cx.Path, k); v != "" {
+			t.Fatalf("%s = %q after Disconnect: magpie's put back, or Jellytool's left\n%s", k, v, read())
+		}
+	}
+	magpieTablesStand(t, cx, read)
+}
+
+// Jellytool made Codex's provider while magpie held the base URL (a model
+// set without the user's connect, as before this fix): the subscription's
+// models were out of the app's list. That is drift of its own, and
+// Reconnect puts Jellytool beside the sign-in.
+func TestCodexIsolationReconnectTakesBackSignIn(t *testing.T) {
+	cx, read, _ := magpieBeside(t)
+	if err := cx.Field("model").Set("fake/m1"); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := edit.GetTOMLTop(cx.Path, "model_provider"); p != codexProviderID {
+		t.Fatalf("a set outside a connect took magpie's base URL:\n%s", read())
+	}
+	if !cx.Wired() || !cx.PeerHeld() {
+		t.Fatalf("held by magpie not told:\n%s", read())
+	}
+	if d := cx.Drift(); d == nil || d.Kind != "peer" {
+		t.Fatalf("drift %+v, want peer", d)
+	}
+	before := read()
+	if err := cx.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if read() != before {
+		t.Fatalf("a Sync took magpie's base URL:\n%s", read())
+	}
+	if err := cx.Reapply(); err != nil {
+		t.Fatal(err)
+	}
+	besideSignIn(t, cx, read)
+	magpieTablesStand(t, cx, read)
 }
