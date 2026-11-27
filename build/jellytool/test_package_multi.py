@@ -86,7 +86,7 @@ class PackageMultiTests(unittest.TestCase):
         return calls
 
     def test_windows_installer_lets_a_standard_user_install_for_themself(self):
-        script = packager.nsis_script("out.exe", "pkg")
+        script = packager.nsis_script("out.exe", "pkg", "x64")
         # Highest: an administrator is asked once and may pick either mode; a
         # standard user is not asked and installs for themself.
         self.assertIn("!define MULTIUSER_EXECUTIONLEVEL Highest", script)
@@ -107,11 +107,11 @@ class PackageMultiTests(unittest.TestCase):
         # The uninstaller follows its own folder, and a per-machine one needs an admin.
         self.assertIn('ReadRegStr $R1 HKLM "${UNINST_KEY}" "InstallLocation"', uninit)
         self.assertIn("Quit", uninit[:uninit.index("FunctionEnd")])
-        for placeholder in ("@ARCHIVE@", "@SOURCE@"):
+        for placeholder in ("@ARCHIVE@", "@SOURCE@", "@ARCH@"):
             self.assertNotIn(placeholder, script)
 
     def test_windows_installer_asks_before_closing_running_copies(self):
-        script = packager.nsis_script("out.exe", "pkg")
+        script = packager.nsis_script("out.exe", "pkg", "x64")
         install = script[script.index("\nSection\n"):script.index("SectionEnd")]
         uninstall = script[script.index('Section "Uninstall"'):]
         # Asked when the folder (or the uninstall) is confirmed, Cancel staying on the page.
@@ -144,6 +144,24 @@ class PackageMultiTests(unittest.TestCase):
         # No relative jump: a macro or plugin call after it would move its target.
         self.assertNotRegex(script, r"ID(YES|NO|OK|RETRY|CANCEL) [+-]\d")
 
+    def test_windows_installer_warns_but_never_blocks_on_the_system(self):
+        for arch in ("x64", "ARM64"):
+            script = packager.nsis_script("out.exe", "pkg", arch)
+            self.assertIn(f'!define PACKAGE_ARCH "{arch}"', script)
+            init = script[script.index("Function .onInit"):]
+            self.assertTrue(init.split("\n")[1].strip() == "Call CheckSystem", "checked before anything else")
+            check = script[script.index("Function CheckSystem"):script.index("Function .onInit")]
+            self.assertIn("${IsNativeIA32}", check)
+            self.assertIn("${AtLeastBuild} 17763", check)
+            self.assertEqual(check.count("!insertmacro WarnSystem"), 4)
+            self.assertNotIn("Abort", check, "only the user's No ends the install")
+            self.assertIn("IDNO`\n    Abort", script)
+            warn = script[script.index("!macro WarnSystem"):script.index("Function CheckSystem")]
+            self.assertIn("MB_YESNO", warn)
+            self.assertIn("/SD IDYES", warn, "a silent install goes on")
+        with self.assertRaisesRegex(ValueError, "no Windows installer"):
+            packager.nsis_script("out.exe", "pkg", "x86")
+
     @unittest.skipUnless(shutil.which("makensis"), "makensis not installed")
     def test_windows_installer_script_compiles(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -151,11 +169,12 @@ class PackageMultiTests(unittest.TestCase):
             (source / "jellytool-resources").mkdir(parents=True)
             (source / "Jellytool.exe").write_bytes(b"MZ")
             (source / "jellytool-resources/bun.exe").write_bytes(b"MZ")
-            script = Path(folder) / "t.nsi"
-            out = Path(folder) / "out.exe"
-            script.write_text(packager.nsis_script(out, source), encoding="utf-8-sig")
-            subprocess.run(["makensis", "-WX", str(script)], check=True, stdout=subprocess.DEVNULL)
-            self.assertTrue(out.is_file())
+            for arch in ("x64", "ARM64"):
+                script = Path(folder) / f"{arch}.nsi"
+                out = Path(folder) / f"{arch}.exe"
+                script.write_text(packager.nsis_script(out, source, arch), encoding="utf-8-sig")
+                subprocess.run(["makensis", "-WX", str(script)], check=True, stdout=subprocess.DEVNULL)
+                self.assertTrue(out.is_file())
 
     def test_darwin_build_targets_the_bundled_bun_minimum(self):
         with tempfile.TemporaryDirectory() as folder:

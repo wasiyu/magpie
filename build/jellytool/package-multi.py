@@ -195,6 +195,7 @@ def notarize(archive, profile):
 NSIS_TEMPLATE = r"""Unicode true
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jellytool"
 !define OLD_DIR "$LOCALAPPDATA\Programs\Jellytool"
+!define PACKAGE_ARCH "@ARCH@"
 ; An administrator chooses: for every user in Program Files (the default, one
 ; UAC prompt at start) or for themself. A standard user gets no prompt and
 ; installs for themself under %LOCALAPPDATA%\Programs, which needs no admin.
@@ -212,6 +213,8 @@ NSIS_TEMPLATE = r"""Unicode true
 !include "MultiUser.nsh"
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
+!include "WinVer.nsh"
+!include "x64.nsh"
 !include "FileFunc.nsh"
 Name "Jellytoken助手"
 OutFile "@ARCHIVE@"
@@ -261,7 +264,36 @@ Var OldDir
   ${Loop}
 !macroend
 
+; Warns about a system the app may not start on, and lets the user go on:
+; a wrong guess must never stop an install. Go 1.26 and Bun 1.4 need 64-bit
+; Windows 10 1809 (build 17763) or later. An ARM64 build runs only on ARM64;
+; an x64 build also on Windows 11 ARM64, which emulates x64 (Windows 10 on
+; ARM emulates 32-bit x86 only). At most one warning shows. A silent
+; install (/S) goes on.
+!macro WarnSystem TEXT
+  ${If} ${Cmd} `MessageBox MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON2 "${TEXT}$\r$\n$\r$\n仍要继续安装吗？" /SD IDYES IDNO`
+    Abort
+  ${EndIf}
+!macroend
+
+Function CheckSystem
+  ${If} ${IsNativeIA32}
+    !insertmacro WarnSystem "当前是 32 位 Windows。Jellytoken助手 是 64 位程序，装上后无法运行，需要 64 位的 Windows 10（1809 及以上）或 Windows 11。"
+  ${ElseIfNot} ${AtLeastBuild} 17763
+    !insertmacro WarnSystem "当前 Windows 版本较旧（低于 Windows 10 1809），Jellytoken助手 装上后可能无法打开，建议先更新 Windows。$\r$\n可按 Win+R 输入 winver 查看系统版本。"
+  !if "${PACKAGE_ARCH}" == "ARM64"
+  ${ElseIfNot} ${IsNativeARM64}
+    !insertmacro WarnSystem "这是 ARM 电脑（如骁龙笔记本）用的安装包，当前电脑装上后无法运行，请改下载 Windows x64 安装包。"
+  !else
+  ${ElseIf} ${IsNativeARM64}
+  ${AndIfNot} ${AtLeastWin11}
+    !insertmacro WarnSystem "当前是 Windows 10 的 ARM 电脑，x64 安装包装上后无法运行，请改下载 Windows ARM64 安装包。"
+  !endif
+  ${EndIf}
+FunctionEnd
+
 Function .onInit
+  Call CheckSystem
   SetRegView 64
   ; MultiUser sets the folder for its mode; one given with /D still wins.
   StrCpy $R0 $INSTDIR
@@ -388,8 +420,10 @@ SectionEnd
 """
 
 
-def nsis_script(archive, source):
-    return NSIS_TEMPLATE.replace("@ARCHIVE@", str(archive)).replace("@SOURCE@", str(source))
+def nsis_script(archive, source, arch):
+    if arch not in ("x64", "ARM64"):
+        raise ValueError(f"no Windows installer for {arch}")
+    return NSIS_TEMPLATE.replace("@ARCHIVE@", str(archive)).replace("@SOURCE@", str(source)).replace("@ARCH@", arch)
 
 
 def archive_package(package_dir, target):
@@ -403,7 +437,7 @@ def archive_package(package_dir, target):
     elif target.startswith("windows/"):
         archive = package_dir.parent / (package_dir.name + "-Setup.exe")
         script = package_dir.parent / (package_dir.name + ".nsi")
-        script.write_text(nsis_script(archive, package_dir), encoding="utf-8-sig")
+        script.write_text(nsis_script(archive, package_dir, "ARM64" if target.endswith("/arm64") else "x64"), encoding="utf-8-sig")
         try:
             subprocess.run(["makensis", str(script)], check=True)
         finally:

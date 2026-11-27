@@ -1905,7 +1905,9 @@ default) or themself, and a standard user installs for themself under
 LocalAppData/Programs/Jellytool; an upgrade keeps the mode and folder recorded
 in InstallLocation. It asks before closing running copies, closes them before
 replacing files, moves an earlier per-user install here, creates a Start menu
-shortcut, and registers an uninstaller. NSIS (makensis) must be available on
+shortcut, and registers an uninstaller. On a system the app may not start on
+(32-bit Windows, a build before Windows 10 1809, or the other architecture's
+package) it warns and lets the user go on. NSIS (makensis) must be available on
 the build host.
 The macOS image contains
 only `Jellytool.app` and an `Applications` link to `/Applications`. Its volume
