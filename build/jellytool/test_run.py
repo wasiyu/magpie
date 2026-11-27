@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -150,11 +151,25 @@ class RunTests(unittest.TestCase):
             home = Path(folder).resolve()
             source = self.bundle(home, "build", "new")
             target = self.bundle(home, "Applications", "old")
-            shutil.copyfile("/bin/sleep", target / "Contents/MacOS/jellytool")
+            # A sleep of its own: a copy of /bin/sleep, an Apple platform
+            # binary, is killed at launch outside its own path (Launch
+            # Constraint Violation, with a "damaged" alert), so the test
+            # passed with nothing running to end.
+            stand_in = home / "sleep.c"
+            stand_in.write_text("#include <unistd.h>\nint main(void) { sleep(60); return 0; }\n")
+            subprocess.run(["/usr/bin/clang", "-w", str(stand_in), "-o", str(target / "Contents/MacOS/jellytool")],
+                           check=True, capture_output=True)
             old = subprocess.Popen([str(target / "Contents/MacOS/jellytool"), "60"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             reaper = threading.Thread(target=old.wait)
             reaper.start()
             try:
+                # the install finds it by what it has loaded (lsof), so wait until it is listed
+                for _ in range(100):
+                    if old.pid in runner.background_processes(target) or old.poll() is not None:
+                        break
+                    time.sleep(0.1)
+                self.assertIsNone(old.poll(), "the stand-in jellytool must run until the install ends it")
+                self.assertIn(old.pid, runner.background_processes(target))
                 with patch.object(runner.Path, "home", return_value=home):
                     runner.install_app(source)
                 self.assertIsNotNone(old.poll(), "an installed update must not leave its old stdio binary running")
