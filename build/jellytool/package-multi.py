@@ -399,6 +399,7 @@ Section
     SetShellVarContext current
     Delete "$SMPROGRAMS\Jellytoken助手.lnk"
     Delete "$SMPROGRAMS\Jellytool.lnk"
+    Delete "$DESKTOP\Jellytoken助手.lnk"
     DeleteRegKey HKCU "${UNINST_KEY}"
     SetShellVarContext all
   ${EndIf}
@@ -407,6 +408,7 @@ Section
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   Delete "$SMPROGRAMS\Jellytool.lnk"
   CreateShortcut "$SMPROGRAMS\Jellytoken助手.lnk" "$INSTDIR\Jellytool.exe"
+  CreateShortcut "$DESKTOP\Jellytoken助手.lnk" "$INSTDIR\Jellytool.exe"
   WriteRegStr SHCTX "${UNINST_KEY}" "DisplayName" "Jellytoken助手"
   WriteRegStr SHCTX "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\Jellytool.exe"
   WriteRegStr SHCTX "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
@@ -452,6 +454,7 @@ Section "Uninstall"
   RMDir "$INSTDIR"
   Delete "$SMPROGRAMS\Jellytoken助手.lnk"
   Delete "$SMPROGRAMS\Jellytool.lnk"
+  Delete "$DESKTOP\Jellytoken助手.lnk"
   DeleteRegKey SHCTX "${UNINST_KEY}"
 SectionEnd
 """

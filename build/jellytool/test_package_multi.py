@@ -96,6 +96,9 @@ class PackageMultiTests(unittest.TestCase):
         self.assertLess(script.index("MUI_PAGE_FINISH"), script.index("MUI_UNPAGE_CONFIRM"))
         opener = script[script.index("Function OpenApp"):]
         self.assertIn('Exec \'"$WINDIR\\explorer.exe" "$INSTDIR\\Jellytool.exe"\'', opener[:opener.index("FunctionEnd")])
+        # A desktop shortcut beside the Start menu's, in the same shell context.
+        self.assertIn('CreateShortcut "$DESKTOP\\Jellytoken助手.lnk" "$INSTDIR\\Jellytool.exe"', section)
+        self.assertIn('Delete "$DESKTOP\\Jellytoken助手.lnk"', uninstall)
         # The setup and uninstaller take the app's icon when there is one.
         self.assertIn('!define MUI_ICON "app.ico"\n!define MUI_UNICON "app.ico"', script)
         self.assertNotIn("MUI_ICON", packager.nsis_script("out.exe", "pkg", "x64"))
