@@ -85,6 +85,13 @@ class PackageMultiTests(unittest.TestCase):
         self.assertEqual(bun.read_bytes(), b"\xcf\xfa\xed\xfe original bun", "the caller's Bun must not be modified")
         return calls
 
+    def test_windows_installer_takes_the_app_icon(self):
+        script = packager.nsis_script("out.exe", "pkg", "x64", icon="app.ico")
+        # The setup and uninstaller take the app's icon when there is one.
+        self.assertIn('!define MUI_ICON "app.ico"\n!define MUI_UNICON "app.ico"', script)
+        self.assertNotIn("MUI_ICON", packager.nsis_script("out.exe", "pkg", "x64"))
+        self.assertNotIn("@ICON_DEFINES@", packager.nsis_script("out.exe", "pkg", "x64"))
+
     def test_windows_installer_lets_a_standard_user_install_for_themself(self):
         script = packager.nsis_script("out.exe", "pkg", "x64")
         # Highest: an administrator is asked once and may pick either mode; a
@@ -107,7 +114,7 @@ class PackageMultiTests(unittest.TestCase):
         # The uninstaller follows its own folder, and a per-machine one needs an admin.
         self.assertIn('ReadRegStr $R1 HKLM "${UNINST_KEY}" "InstallLocation"', uninit)
         self.assertIn("Quit", uninit[:uninit.index("FunctionEnd")])
-        for placeholder in ("@ARCHIVE@", "@SOURCE@", "@ARCH@"):
+        for placeholder in ("@ARCHIVE@", "@SOURCE@", "@ARCH@", "@ICON_DEFINES@"):
             self.assertNotIn(placeholder, script)
 
     def test_windows_installer_asks_before_closing_running_copies(self):
@@ -175,6 +182,54 @@ class PackageMultiTests(unittest.TestCase):
                 script.write_text(packager.nsis_script(out, source, arch), encoding="utf-8-sig")
                 subprocess.run(["makensis", "-WX", str(script)], check=True, stdout=subprocess.DEVNULL)
                 self.assertTrue(out.is_file())
+            # and with an icon: magpie's tray .ico stands in for the app's
+            icon = Path(__file__).resolve().parents[2] / "internal/gui/icon-windows.ico"
+            script = Path(folder) / "icon.nsi"
+            out = Path(folder) / "icon.exe"
+            script.write_text(packager.nsis_script(out, source, "x64", icon), encoding="utf-8-sig")
+            subprocess.run(["makensis", "-WX", str(script)], check=True, stdout=subprocess.DEVNULL)
+            self.assertTrue(out.is_file())
+
+    def test_windows_build_links_the_app_icon_and_removes_its_resource(self):
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            repo = Path(__file__).resolve().parents[2]
+            (folder / "build/windows").mkdir(parents=True)
+            shutil.copyfile(repo / "build/windows/winres.json", folder / "build/windows/winres.json")
+            staging = folder / "staging"
+            staging.mkdir()
+            bun = folder / "bun.exe"
+            bun.write_bytes(b"MZ")
+            seen = {}
+
+            def run(command, **kwargs):
+                command = [str(part) for part in command]
+                if command[1:3] == ["run", "build/jellytool/ico.go"]:
+                    Path(command[-1]).write_bytes(b"ico")
+                elif "github.com/tc-hib/go-winres@v0.3.3" in command:
+                    spec = json.loads(Path(command[command.index("--in") + 1]).read_text())
+                    seen["spec"] = spec
+                    seen["icon"] = (Path(command[command.index("--in") + 1]).parent / spec["RT_GROUP_ICON"]["#3"]["0000"]).read_bytes()
+                    seen["version"] = command[command.index("--file-version") + 1]
+                    (folder / "rsrc_windows_amd64.syso").write_bytes(b"syso")
+                elif command[1] == "build":
+                    seen["linked"] = (folder / "rsrc_windows_amd64.syso").exists()
+                    seen["ico beside the package"] = (staging / "Jellytool-Windows-x64.ico").exists()
+                    raise subprocess.CalledProcessError(1, command)
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            args = SimpleNamespace(version="0.2.3", build="", update_feed="", sign_identity="", notary_profile="")
+            with patch.object(packager.subprocess, "run", side_effect=run), \
+                    self.assertRaises(subprocess.CalledProcessError):
+                packager.build_target(folder, Path("/go/bin/go"), "windows/amd64", bun, staging, args, {"PATH": "/bin"}, "darwin/arm64")
+            # icon group #3 is the window's and taskbar's (TestWindowsIconIsResourceThree)
+            self.assertEqual(list(seen["spec"]["RT_GROUP_ICON"]), ["#3"])
+            self.assertEqual(seen["icon"], b"ico")
+            self.assertEqual(seen["spec"]["RT_VERSION"]["#1"]["0000"]["info"]["0409"]["ProductName"], "Jellytoken助手")
+            self.assertEqual(seen["version"], "0.2.3")
+            self.assertTrue(seen["linked"] and seen["ico beside the package"])
+            # even a failed build leaves no .syso for the next magpie build
+            self.assertFalse((folder / "rsrc_windows_amd64.syso").exists())
 
     def test_darwin_build_targets_the_bundled_bun_minimum(self):
         with tempfile.TemporaryDirectory() as folder:

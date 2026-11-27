@@ -124,6 +124,31 @@ def stage_icon(root, resources):
         shutil.rmtree(iconset)
 
 
+def windows_resources(root, go, goarch, icon, version, env):
+    """Write the .syso go build links into Jellytool.exe and return its path;
+    the caller removes it after the build. It holds the app artwork as icon
+    group #3, the one Wails gives the window and taskbar (see
+    TestWindowsIconIsResourceThree) and the exe's icon that its shortcuts
+    and Installed apps show; magpie's manifest; and a version block naming
+    the product, which Task Manager and Startup apps show."""
+    res = json.loads((root / "build/windows/winres.json").read_text())
+    res["RT_GROUP_ICON"] = {"#3": {"0000": icon.name}}
+    manifest = res["RT_MANIFEST"]["#1"]["0409"]
+    manifest["identity"]["name"], manifest["description"] = "com.jellytoken.jellytool", "Jellytool"
+    res["RT_VERSION"]["#1"]["0000"]["info"]["0409"].update(
+        CompanyName="Jellytoken", FileDescription="Jellytoken助手", ProductName="Jellytoken助手",
+        OriginalFilename="Jellytool.exe", LegalCopyright="Jellytoken")
+    # go-winres reads a file the spec names relative to the spec
+    spec = icon.parent / "winres.json"
+    spec.write_text(json.dumps(res, ensure_ascii=False), encoding="utf-8")
+    numeric = version if version != "dev" else "0.0.0"
+    subprocess.run([
+        str(go), "run", "github.com/tc-hib/go-winres@v0.3.3", "make", "--in", str(spec), "--arch", goarch,
+        "--out", str(root / "rsrc"), "--file-version", numeric, "--product-version", numeric,
+    ], cwd=root, env=env, check=True)
+    return root / f"rsrc_windows_{goarch}.syso"
+
+
 def copy_common_files(root, package_dir, resources):
     shutil.copyfile(root / "internal/gui/assets/jellytool-guide.md", resources / "使用说明.md")
     shutil.copyfile(root / "LICENSE", resources / "LICENSE")
@@ -219,7 +244,7 @@ NSIS_TEMPLATE = r"""Unicode true
 Name "Jellytoken助手"
 OutFile "@ARCHIVE@"
 SetCompressor /SOLID lzma
-Var OldDir
+@ICON_DEFINES@Var OldDir
 !insertmacro MULTIUSER_PAGE_INSTALLMODE
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE DirectoryLeave
 !insertmacro MUI_PAGE_DIRECTORY
@@ -420,10 +445,14 @@ SectionEnd
 """
 
 
-def nsis_script(archive, source, arch):
+def nsis_script(archive, source, arch, icon=None):
+    """icon is the app's .ico (build_target writes it) for the setup and
+    uninstaller; without one they keep NSIS's own."""
     if arch not in ("x64", "ARM64"):
         raise ValueError(f"no Windows installer for {arch}")
-    return NSIS_TEMPLATE.replace("@ARCHIVE@", str(archive)).replace("@SOURCE@", str(source)).replace("@ARCH@", arch)
+    icons = f'!define MUI_ICON "{icon}"\n!define MUI_UNICON "{icon}"\n' if icon else ""
+    return (NSIS_TEMPLATE.replace("@ARCHIVE@", str(archive)).replace("@SOURCE@", str(source))
+            .replace("@ARCH@", arch).replace("@ICON_DEFINES@", icons))
 
 
 def archive_package(package_dir, target):
@@ -437,11 +466,14 @@ def archive_package(package_dir, target):
     elif target.startswith("windows/"):
         archive = package_dir.parent / (package_dir.name + "-Setup.exe")
         script = package_dir.parent / (package_dir.name + ".nsi")
-        script.write_text(nsis_script(archive, package_dir, "ARM64" if target.endswith("/arm64") else "x64"), encoding="utf-8-sig")
+        icon = package_dir.parent / (package_dir.name + ".ico")
+        script.write_text(nsis_script(archive, package_dir, "ARM64" if target.endswith("/arm64") else "x64",
+                                      icon if icon.exists() else None), encoding="utf-8-sig")
         try:
             subprocess.run(["makensis", str(script)], check=True)
         finally:
             script.unlink()
+            icon.unlink(missing_ok=True)
     else:
         archive = package_dir.with_suffix(".zip")
         shutil.make_archive(str(archive.with_suffix("")), "zip", root_dir=package_dir.parent, base_dir=package_dir.name)
@@ -479,10 +511,24 @@ def build_target(root, go, target, bun, staging, args, env, host):
     tags = ["jellytool", "production"]
     if goos == "linux":
         tags.append("gtk3")
-    subprocess.run([
-        str(go), "build", "-tags", ",".join(tags), "-trimpath", "-ldflags", ldflags,
-        "-o", str(binary), ".",
-    ], cwd=root, env=build_env, check=True)
+    syso = None
+    try:
+        if goos == "windows":
+            # one .ico for the exe and, beside the package, the setup
+            # (archive_package)
+            icon = staging / (name + ".ico")
+            subprocess.run([str(go), "run", "build/jellytool/ico.go", "internal/gui/assets/icons/jellytool-app.png", str(icon)],
+                           cwd=root, env=env, check=True)
+            with tempfile.TemporaryDirectory(prefix="jellytool-winres-") as winres:
+                shutil.copyfile(icon, Path(winres) / "jellytool.ico")
+                syso = windows_resources(root, go, goarch, Path(winres) / "jellytool.ico", args.version, env)
+        subprocess.run([
+            str(go), "build", "-tags", ",".join(tags), "-trimpath", "-ldflags", ldflags,
+            "-o", str(binary), ".",
+        ], cwd=root, env=build_env, check=True)
+    finally:
+        if syso is not None:
+            syso.unlink(missing_ok=True)
     sign = goos == "darwin" and args.sign_identity
     with tempfile.TemporaryDirectory(prefix="jellytool-bun-") as signing:
         packed_bun = signed_bun_copy(bun.resolve(strict=True), signing, args.sign_identity) if sign else bun.resolve(strict=True)
