@@ -85,6 +85,78 @@ class PackageMultiTests(unittest.TestCase):
         self.assertEqual(bun.read_bytes(), b"\xcf\xfa\xed\xfe original bun", "the caller's Bun must not be modified")
         return calls
 
+    def test_windows_installer_lets_a_standard_user_install_for_themself(self):
+        script = packager.nsis_script("out.exe", "pkg")
+        # Highest: an administrator is asked once and may pick either mode; a
+        # standard user is not asked and installs for themself.
+        self.assertIn("!define MULTIUSER_EXECUTIONLEVEL Highest", script)
+        self.assertNotIn("RequestExecutionLevel admin", script)
+        self.assertIn("!insertmacro MULTIUSER_PAGE_INSTALLMODE", script)
+        # The 32-bit NSIS stub would put $PROGRAMFILES under "(x86)".
+        self.assertIn("!define MULTIUSER_USE_PROGRAMFILES64", script)
+        self.assertNotIn("$PROGRAMFILES\\", script)
+        # The entry goes where the mode says, and its folder is read back.
+        self.assertIn('WriteRegStr SHCTX "${UNINST_KEY}" "InstallLocation" "$INSTDIR"', script)
+        self.assertNotRegex(script, r'WriteReg\w+ HK(LM|CU) ')
+        self.assertIn('!define MULTIUSER_INSTALLMODE_INSTDIR_REGISTRY_VALUENAME "InstallLocation"', script)
+        # The registry is read and written in its 64-bit view before MultiUser looks.
+        init = script[script.index("Function .onInit"):]
+        self.assertLess(init.index("SetRegView 64"), init.index("MULTIUSER_INIT"))
+        uninit = script[script.index("Function un.onInit"):]
+        self.assertLess(uninit.index("SetRegView 64"), uninit.index("MULTIUSER_UNINIT"))
+        # The uninstaller follows its own folder, and a per-machine one needs an admin.
+        self.assertIn('ReadRegStr $R1 HKLM "${UNINST_KEY}" "InstallLocation"', uninit)
+        self.assertIn("Quit", uninit[:uninit.index("FunctionEnd")])
+        for placeholder in ("@ARCHIVE@", "@SOURCE@"):
+            self.assertNotIn(placeholder, script)
+
+    def test_windows_installer_asks_before_closing_running_copies(self):
+        script = packager.nsis_script("out.exe", "pkg")
+        install = script[script.index("\nSection\n"):script.index("SectionEnd")]
+        uninstall = script[script.index('Section "Uninstall"'):]
+        # Asked when the folder (or the uninstall) is confirmed, Cancel staying on the page.
+        self.assertIn("!define MUI_PAGE_CUSTOMFUNCTION_LEAVE DirectoryLeave\n!insertmacro MUI_PAGE_DIRECTORY", script)
+        self.assertIn("!define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.ConfirmLeave\n!insertmacro MUI_UNPAGE_CONFIRM", script)
+        for name in ("Function DirectoryLeave", "Function un.ConfirmLeave"):
+            leave = script[script.index(name):]
+            leave = leave[:leave.index("FunctionEnd")]
+            self.assertIn('!insertmacro RunStopScript "$INSTDIR', leave)
+            self.assertNotIn('" "1"', leave, "asking stops nothing")
+            self.assertIn("MB_OKCANCEL", leave)
+            self.assertIn("IDCANCEL`\n      Abort", leave)
+        # Then a running bun.exe or Jellytool.exe, which locks its file, is ended first.
+        self.assertLess(install.index('!insertmacro RunStopScript "$INSTDIR|$OldDir" "1"'), install.index("File /r"))
+        self.assertLess(uninstall.index('!insertmacro RunStopScript "$INSTDIR" "1"'), uninstall.index("RemoveFrom"))
+        # Only the app and its Bun host are matched, never other programs in the folder.
+        stop = script[script.index("!macro RunStopScript"):]
+        stop = stop[:stop.index("!macroend")]
+        self.assertIn("'Jellytool.exe'", stop)
+        self.assertIn("'jellytool-resources\\'", stop)
+        self.assertNotIn("Get-Process", stop)
+        self.assertNotIn("${DIRS}", stop.split("nsExec::", 1)[1])
+        # Scanners flag a hidden PowerShell with its policy bypassed.
+        self.assertNotIn("Bypass", script)
+        # An earlier per-user install is found from its own HKCU entry and moved.
+        self.assertIn('ReadRegStr $OldDir HKCU "${UNINST_KEY}" "UninstallString"', script)
+        self.assertLess(install.index('!insertmacro RemoveFrom "$OldDir"'), install.index('DeleteRegKey HKCU "${UNINST_KEY}"'))
+        # An upgrade starts from an empty folder: no stale resource is kept.
+        self.assertLess(install.index('!insertmacro RemoveFrom "$INSTDIR"'), install.index("File /r"))
+        # No relative jump: a macro or plugin call after it would move its target.
+        self.assertNotRegex(script, r"ID(YES|NO|OK|RETRY|CANCEL) [+-]\d")
+
+    @unittest.skipUnless(shutil.which("makensis"), "makensis not installed")
+    def test_windows_installer_script_compiles(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "pkg"
+            (source / "jellytool-resources").mkdir(parents=True)
+            (source / "Jellytool.exe").write_bytes(b"MZ")
+            (source / "jellytool-resources/bun.exe").write_bytes(b"MZ")
+            script = Path(folder) / "t.nsi"
+            out = Path(folder) / "out.exe"
+            script.write_text(packager.nsis_script(out, source), encoding="utf-8-sig")
+            subprocess.run(["makensis", "-WX", str(script)], check=True, stdout=subprocess.DEVNULL)
+            self.assertTrue(out.is_file())
+
     def test_darwin_build_targets_the_bundled_bun_minimum(self):
         with tempfile.TemporaryDirectory() as folder:
             calls = self.build_darwin(folder)

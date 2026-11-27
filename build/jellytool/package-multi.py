@@ -189,6 +189,209 @@ def notarize(archive, profile):
     subprocess.run(["spctl", "--assess", "--type", "install", "-vv", str(archive)], check=True)
 
 
+# The NSIS stub is 32-bit, so $PROGRAMFILES is "Program Files (x86)"; both
+# Windows builds are 64-bit (x64, ARM64) and MultiUser puts a per-machine
+# install in $PROGRAMFILES64. The script explains each step.
+NSIS_TEMPLATE = r"""Unicode true
+!define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jellytool"
+!define OLD_DIR "$LOCALAPPDATA\Programs\Jellytool"
+; An administrator chooses: for every user in Program Files (the default, one
+; UAC prompt at start) or for themself. A standard user gets no prompt and
+; installs for themself under %LOCALAPPDATA%\Programs, which needs no admin.
+; /AllUsers and /CurrentUser pick it for a silent install. The mode of an
+; earlier install, and its folder, come from InstallLocation in HKLM or HKCU.
+!define MULTIUSER_EXECUTIONLEVEL Highest
+!define MULTIUSER_MUI
+!define MULTIUSER_USE_PROGRAMFILES64
+!define MULTIUSER_INSTALLMODE_COMMANDLINE
+!define MULTIUSER_INSTALLMODE_INSTDIR "Jellytool"
+!define MULTIUSER_INSTALLMODE_INSTDIR_REGISTRY_KEY "${UNINST_KEY}"
+!define MULTIUSER_INSTALLMODE_INSTDIR_REGISTRY_VALUENAME "InstallLocation"
+!define MULTIUSER_INSTALLMODE_DEFAULT_REGISTRY_KEY "${UNINST_KEY}"
+!define MULTIUSER_INSTALLMODE_DEFAULT_REGISTRY_VALUENAME "InstallLocation"
+!include "MultiUser.nsh"
+!include "MUI2.nsh"
+!include "LogicLib.nsh"
+!include "FileFunc.nsh"
+Name "Jellytoken助手"
+OutFile "@ARCHIVE@"
+SetCompressor /SOLID lzma
+Var OldDir
+!insertmacro MULTIUSER_PAGE_INSTALLMODE
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE DirectoryLeave
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_INSTFILES
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.ConfirmLeave
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+!insertmacro MUI_LANGUAGE "SimpChinese"
+
+; Counts, into $0, the Jellytool.exe and Bun plugin host
+; (jellytool-resources\bun.exe) processes run from the folders in DIRS
+; ("|" between them), and with STOP "1" ends them first. Files can't be
+; replaced or removed while they run, and MCP clients start Jellytool.exe
+; on their own. Nothing else installed in or beside a folder is matched.
+; The folders reach PowerShell through the environment, so a quote in one
+; can't break the command; WMI's ExecutablePath is read because a 32-bit
+; PowerShell's Get-Process can't see a 64-bit process's path. If
+; PowerShell is blocked the count is 0, and a locked file still asks.
+!macro RunStopScript DIRS STOP
+  System::Call 'Kernel32::SetEnvironmentVariable(t "JELLYTOOL_DIRS", t "${DIRS}")'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "JELLYTOOL_STOP", t "${STOP}")'
+  nsExec::ExecToStack `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "$$n=@(Get-CimInstance Win32_Process|?{$$p=$$_.ExecutablePath;$$p -and @($$env:JELLYTOOL_DIRS -split '\|'|?{$$_}|%{$$d=$$_.TrimEnd('\')+'\';$$p -ieq ($$d+'Jellytool.exe') -or $$p.StartsWith($$d+'jellytool-resources\',[StringComparison]::OrdinalIgnoreCase)}) -contains $$true});if($$env:JELLYTOOL_STOP){$$n|%{Stop-Process -Id $$_.ProcessId -Force -EA 0};Start-Sleep -Milliseconds 800};$$n.Count"`
+  Pop $0
+  Pop $0
+!macroend
+
+; Removes what an install put in DIR, asking again while a file stays locked
+; (a process the stop missed, or a virus scanner still reading bun.exe).
+; Only these names are removed, whatever else the folder holds.
+!macro RemoveFrom DIR
+  ${Do}
+    Delete "${DIR}\Jellytool.exe"
+    RMDir /r "${DIR}\jellytool-resources"
+    ${IfNot} ${FileExists} "${DIR}\Jellytool.exe"
+    ${AndIfNot} ${FileExists} "${DIR}\jellytool-resources\*.*"
+      ${Break}
+    ${EndIf}
+    ${If} ${Cmd} `MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Jellytoken助手 的文件仍被占用，无法删除：$\r$\n${DIR}$\r$\n$\r$\n请退出 Jellytoken助手（包括托盘图标），并在 Claude、WorkBuddy 等客户端中断开 jellytool-image，然后点「重试」。" /SD IDCANCEL IDCANCEL`
+      Abort "仍有文件被占用：${DIR}"
+    ${EndIf}
+    !insertmacro RunStopScript "${DIR}" "1"
+  ${Loop}
+!macroend
+
+Function .onInit
+  SetRegView 64
+  ; MultiUser sets the folder for its mode; one given with /D still wins.
+  StrCpy $R0 $INSTDIR
+  !insertmacro MULTIUSER_INIT
+  ${If} $R0 != ""
+    StrCpy $INSTDIR $R0
+  ${EndIf}
+FunctionEnd
+
+; Sets $OldDir to another per-user install to move here, or "". Builds
+; before the install-mode page went per user and wrote only HKCU's
+; UninstallString ("<dir>\Uninstall.exe"), in a folder their user may have
+; chosen; a per-user install in another folder is moved the same way.
+Function FindOldDir
+  ReadRegStr $OldDir HKCU "${UNINST_KEY}" "UninstallString"
+  ${If} $OldDir != ""
+    StrCpy $0 $OldDir 1
+    ${If} $0 == '"'
+      StrCpy $OldDir $OldDir "" 1
+      StrCpy $OldDir $OldDir -1
+    ${EndIf}
+    ${GetParent} $OldDir $OldDir
+  ${Else}
+    StrCpy $OldDir "${OLD_DIR}"
+  ${EndIf}
+  ${If} $OldDir == $INSTDIR
+  ${OrIfNot} ${FileExists} "$OldDir\Jellytool.exe"
+    StrCpy $OldDir ""
+  ${EndIf}
+FunctionEnd
+
+; Asked when the folder is confirmed, before anything changes; Cancel
+; stays on the page.
+Function DirectoryLeave
+  ${If} $MultiUser.InstallMode == "CurrentUser"
+    ReadRegStr $1 HKLM "${UNINST_KEY}" "InstallLocation"
+    ${If} $1 != ""
+    ${AndIf} $1 != $INSTDIR
+      ${If} ${Cmd} `MessageBox MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON2 "本机已经为所有用户安装了 Jellytoken助手：$\r$\n$1$\r$\n$\r$\n只为自己再装一份，开始菜单里会出现两个 Jellytoken助手。仍要继续吗？" /SD IDYES IDNO`
+        Abort
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+  Call FindOldDir
+  !insertmacro RunStopScript "$INSTDIR|$OldDir" ""
+  ${If} $0 > 0
+    ${If} ${Cmd} `MessageBox MB_OKCANCEL|MB_ICONINFORMATION "安装前需要关闭正在运行的 Jellytoken助手。$\r$\nClaude、WorkBuddy 等客户端里的 jellytool-image 连接也会断开，装好后需重新连接。$\r$\n$\r$\n点「确定」关闭并继续安装。" /SD IDOK IDCANCEL`
+      Abort
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+
+Section
+  ; A silent install has no pages, so it stops here without asking.
+  Call FindOldDir
+  !insertmacro RunStopScript "$INSTDIR|$OldDir" "1"
+  ; An upgrade starts from an empty folder, so no file a newer build dropped
+  ; is left in jellytool-resources.
+  !insertmacro RemoveFrom "$INSTDIR"
+  ${If} $OldDir != ""
+    !insertmacro RemoveFrom "$OldDir"
+    Delete "$OldDir\Uninstall.exe"
+    RMDir "$OldDir"
+  ${EndIf}
+  ${If} $MultiUser.InstallMode == "AllUsers"
+    SetShellVarContext current
+    Delete "$SMPROGRAMS\Jellytoken助手.lnk"
+    Delete "$SMPROGRAMS\Jellytool.lnk"
+    DeleteRegKey HKCU "${UNINST_KEY}"
+    SetShellVarContext all
+  ${EndIf}
+  SetOutPath "$INSTDIR"
+  File /r "@SOURCE@/*"
+  WriteUninstaller "$INSTDIR\Uninstall.exe"
+  Delete "$SMPROGRAMS\Jellytool.lnk"
+  CreateShortcut "$SMPROGRAMS\Jellytoken助手.lnk" "$INSTDIR\Jellytool.exe"
+  WriteRegStr SHCTX "${UNINST_KEY}" "DisplayName" "Jellytoken助手"
+  WriteRegStr SHCTX "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\Jellytool.exe"
+  WriteRegStr SHCTX "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
+  WriteRegStr SHCTX "${UNINST_KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
+  WriteRegDWORD SHCTX "${UNINST_KEY}" "NoModify" 1
+  WriteRegDWORD SHCTX "${UNINST_KEY}" "NoRepair" 1
+SectionEnd
+
+; The uninstaller removes the install it sits in: per machine when HKLM's
+; InstallLocation names its folder, which needs an administrator, else per
+; user. MultiUser's own pick would follow the account, not the folder.
+Function un.onInit
+  SetRegView 64
+  StrCpy $R0 $INSTDIR
+  !insertmacro MULTIUSER_UNINIT
+  ReadRegStr $R1 HKLM "${UNINST_KEY}" "InstallLocation"
+  ${If} $R1 == $R0
+    ${If} $MultiUser.Privileges != "Admin"
+    ${AndIf} $MultiUser.Privileges != "Power"
+      MessageBox MB_OK|MB_ICONSTOP "Jellytoken助手 是为本机所有用户安装的，卸载需要管理员权限，请用管理员账户卸载。" /SD IDOK
+      Quit
+    ${EndIf}
+    Call un.MultiUser.InstallMode.AllUsers
+  ${Else}
+    Call un.MultiUser.InstallMode.CurrentUser
+  ${EndIf}
+  StrCpy $INSTDIR $R0
+FunctionEnd
+
+Function un.ConfirmLeave
+  !insertmacro RunStopScript "$INSTDIR" ""
+  ${If} $0 > 0
+    ${If} ${Cmd} `MessageBox MB_OKCANCEL|MB_ICONINFORMATION "卸载前需要关闭正在运行的 Jellytoken助手。$\r$\nClaude、WorkBuddy 等客户端里的 jellytool-image 连接也会断开。$\r$\n$\r$\n点「确定」关闭并继续卸载。" /SD IDOK IDCANCEL`
+      Abort
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+
+Section "Uninstall"
+  !insertmacro RunStopScript "$INSTDIR" "1"
+  !insertmacro RemoveFrom "$INSTDIR"
+  Delete "$INSTDIR\Uninstall.exe"
+  RMDir "$INSTDIR"
+  Delete "$SMPROGRAMS\Jellytoken助手.lnk"
+  Delete "$SMPROGRAMS\Jellytool.lnk"
+  DeleteRegKey SHCTX "${UNINST_KEY}"
+SectionEnd
+"""
+
+
+def nsis_script(archive, source):
+    return NSIS_TEMPLATE.replace("@ARCHIVE@", str(archive)).replace("@SOURCE@", str(source))
+
+
 def archive_package(package_dir, target):
     if target.startswith("darwin/"):
         (package_dir / "Applications").symlink_to("/Applications", target_is_directory=True)
@@ -200,37 +403,7 @@ def archive_package(package_dir, target):
     elif target.startswith("windows/"):
         archive = package_dir.parent / (package_dir.name + "-Setup.exe")
         script = package_dir.parent / (package_dir.name + ".nsi")
-        script.write_text(r'''Unicode true
-!include "MUI2.nsh"
-Name "Jellytoken助手"
-OutFile "ARCHIVE"
-InstallDir "$LOCALAPPDATA\Programs\Jellytool"
-RequestExecutionLevel user
-SetCompressor /SOLID lzma
-!insertmacro MUI_PAGE_DIRECTORY
-!insertmacro MUI_PAGE_INSTFILES
-!insertmacro MUI_UNPAGE_CONFIRM
-!insertmacro MUI_UNPAGE_INSTFILES
-!insertmacro MUI_LANGUAGE "SimpChinese"
-Section
-SetOutPath "$INSTDIR"
-File /r "SOURCE/*"
-WriteUninstaller "$INSTDIR\Uninstall.exe"
-Delete "$SMPROGRAMS\Jellytool.lnk"
-CreateShortcut "$SMPROGRAMS\Jellytoken助手.lnk" "$INSTDIR\Jellytool.exe"
-WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jellytool" "DisplayName" "Jellytoken助手"
-WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jellytool" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
-SectionEnd
-Section "Uninstall"
-Delete "$SMPROGRAMS\Jellytoken助手.lnk"
-Delete "$SMPROGRAMS\Jellytool.lnk"
-Delete "$INSTDIR\Jellytool.exe"
-Delete "$INSTDIR\Uninstall.exe"
-RMDir /r "$INSTDIR\jellytool-resources"
-RMDir "$INSTDIR"
-DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jellytool"
-SectionEnd
-'''.replace("ARCHIVE", str(archive)).replace("SOURCE", str(package_dir)), encoding="utf-8-sig")
+        script.write_text(nsis_script(archive, package_dir), encoding="utf-8-sig")
         try:
             subprocess.run(["makensis", str(script)], check=True)
         finally:

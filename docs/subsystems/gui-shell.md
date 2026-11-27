@@ -1900,9 +1900,13 @@ python3 -B -m unittest discover -s build/jellytool -v
 
 [`package-multi.py`](../../build/jellytool/package-multi.py) builds macOS DMG
 images, Windows NSIS setup executables, and Linux ZIP archives. Windows setup
-installs under the current user's LocalAppData/Programs/Jellytool, creates a
-Start menu shortcut and registers an uninstaller. Subsequent installations use
-the same directory; NSIS (makensis) must be available on the build host.
+uses NSIS MultiUser: an administrator chooses all users (Program Files, the
+default) or themself, and a standard user installs for themself under
+LocalAppData/Programs/Jellytool; an upgrade keeps the mode and folder recorded
+in InstallLocation. It asks before closing running copies, closes them before
+replacing files, moves an earlier per-user install here, creates a Start menu
+shortcut, and registers an uninstaller. NSIS (makensis) must be available on
+the build host.
 The macOS image contains
 only `Jellytool.app` and an `Applications` link to `/Applications`. Its volume
 name repeats the drag-to-install instruction; this guides installation but does
