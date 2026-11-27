@@ -47,7 +47,7 @@ for the same data root are rejected. An application startup failure is not
 automatically relaunched; its output is saved beside the instance lock as
 `jellytool-instance.launch.log` and included in the error. Only LaunchServices
 error `-600` gets bounded retries. Pass arguments after `--` for Jellytool
-itself (`launch.py <app> -- app`; Jellytool does not accept `tray`). Portable
+itself (`launch.py <app> -- app`; `tray` starts it with the window hidden). Portable
 builds use their own data root. See [the shell contract](docs/subsystems/gui-shell.md#local-jellytool-launches)
 for the readiness checks and offline regression command.
 

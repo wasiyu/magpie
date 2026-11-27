@@ -32,7 +32,8 @@ func init() {
 			fmt.Fprint(w, "<p>Jellytool tray regression</p>")
 		})},
 	})
-	h := &jellytoolWindow{host: &host{app: app}}
+	h := &jellytoolWindow{host: &host{app: app, ready: make(chan struct{})}}
+	close(h.ready) // ShowMain waits for it; this window has no first page to wait on
 	h.main = app.Window.NewWithOptions(application.WebviewWindowOptions{Name: "jellytool-main", Title: "Jellytool tray regression", Width: 500, Height: 300})
 	h.setupJellytoolTray("test")
 	fail := func(what string) { fmt.Println("jellytool tray: " + what); os.Exit(1) }

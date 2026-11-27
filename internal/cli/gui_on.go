@@ -28,7 +28,7 @@ var openApp = func(showMain bool, link string) error {
 	proc.UserPath()
 	gui.Started = ownSignals // once Wails handles them: it quits through OnShutdown
 	if product.Jellytool {
-		return gui.RunJellytool(version)
+		return gui.RunJellytool(version, showMain)
 	}
 	return gui.Run(version, showMain, link)
 }

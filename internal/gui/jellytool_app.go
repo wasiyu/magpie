@@ -4,6 +4,8 @@ package gui
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -25,8 +27,9 @@ import (
 )
 
 // RunJellytool keeps Jellytool's app identity and bundled provider while using
-// magpie's normal backend, gateway, plugin host, and feature set.
-func RunJellytool(version string) error {
+// magpie's normal backend, gateway, plugin host, and feature set. showMain
+// false is the login start (`tray`): the tray and gateway, no window.
+func RunJellytool(version string, showMain bool) error {
 	if !product.Jellytool {
 		return errors.New("Jellytool requires a jellytool build")
 	}
@@ -40,6 +43,11 @@ func RunJellytool(version string) error {
 	// handling to the bundle ID. Failure never falls through to an unlocked run.
 	unlock, held := filelock.Lock(filepath.Join(appdir.Config(), "jellytool-instance.lock"), time.Millisecond)
 	if !held {
+		// A shortcut opened while the login start holds the lock: hand the
+		// launch to it, as magpie's own second launch does. Wails exits this
+		// process once the running one is told; it returns only when no
+		// running one answers.
+		handOverToRunningJellytool()
 		return errors.New(product.Name + " is already running or its data directory cannot be locked")
 	}
 	defer unlock()
@@ -84,7 +92,6 @@ func RunJellytool(version string) error {
 		return err
 	}
 	h := &jellytoolWindow{host: &host{ready: make(chan struct{})}}
-	close(h.ready)
 	updateDone := updates.startIn(ctx)
 	var once sync.Once
 	var stopErr error
@@ -101,11 +108,12 @@ func RunJellytool(version string) error {
 	defer stop()
 	h.app = application.New(application.Options{
 		Name: product.Name, Description: "Jellytoken for your coding agents", Icon: jellytoolAppIcon(),
-		Assets:     application.AssetOptions{Handler: ownWindow(Handler(h, gw))},
-		Mac:        application.MacOptions{ActivationPolicy: application.ActivationPolicyRegular, ApplicationShouldTerminateAfterLastWindowClosed: false},
-		Windows:    application.WindowsOptions{WebviewUserDataPath: appdir.WebView()},
-		Linux:      application.LinuxOptions{ProgramName: "jellytool", ApplicationID: "org.wails.Jellytool"}, // the id Wails derived from the old Name
-		OnShutdown: stop,
+		Assets:         application.AssetOptions{Handler: ownWindow(Handler(h, gw))},
+		Mac:            application.MacOptions{ActivationPolicy: application.ActivationPolicyRegular, ApplicationShouldTerminateAfterLastWindowClosed: false},
+		Windows:        application.WindowsOptions{WebviewUserDataPath: appdir.WebView()},
+		Linux:          application.LinuxOptions{ProgramName: "jellytool", ApplicationID: "org.wails.Jellytool"}, // the id Wails derived from the old Name
+		OnShutdown:     stop,
+		SingleInstance: jellytoolSingleInstance(h),
 	})
 	if !webView2Check(h.app) {
 		return nil
@@ -124,8 +132,18 @@ func RunJellytool(version string) error {
 			}
 		}()
 	})
-	h.main = h.app.Window.NewWithOptions(application.WebviewWindowOptions{Name: "jellytool-main", Title: product.Name, Width: 1100, Height: 760, URL: "/"})
+	h.main = h.app.Window.NewWithOptions(application.WebviewWindowOptions{Name: "jellytool-main", Title: product.Name, Width: 1100, Height: 760, URL: "/", Hidden: !showMain})
 	h.setupJellytoolTray(version)
+	// What waits on ready (ShowMain) runs once the window
+	// can be shown: on Windows after WebView2's first page, as magpie's
+	// main window, since a webview shown before its controller is made
+	// crashes on a slow first start.
+	markReady := func() { h.readyOnce.Do(func() { close(h.ready) }) }
+	if runtime.GOOS == "windows" {
+		h.main.OnWindowEvent(events.Windows.WebViewNavigationCompleted, func(*application.WindowEvent) { markReady() })
+	} else {
+		h.app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { markReady() })
+	}
 	err = h.app.Run()
 	stop()
 	select {
@@ -138,8 +156,56 @@ func RunJellytool(version string) error {
 
 type jellytoolWindow struct{ *host }
 
+// jellytoolSingleInstance hands a second launch on Windows to the running
+// Jellytool: the login start holds the instance lock, and a shortcut opened
+// then would otherwise end without a word. A second launch with `tray` (the
+// login start racing a shortcut) opens nothing; any other shows the window.
+// h is nil in the second launch, which only notifies. The Mac reopens the
+// app through LaunchServices; Linux keeps the lock's error.
+func jellytoolSingleInstance(h *jellytoolWindow) *application.SingleInstanceOptions {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	return &application.SingleInstanceOptions{
+		UniqueID: jellytoolInstanceID(),
+		OnSecondInstanceLaunch: func(d application.SecondInstanceData) {
+			if h == nil || (len(d.Args) == 2 && d.Args[1] == "tray") {
+				return
+			}
+			h.ShowMain("")
+		},
+	}
+}
+
+// handOverToRunningJellytool tells the running Jellytool of this launch,
+// and Wails then exits this process. It asks only once the running one has
+// made its single-instance mutex: asked before, Wails here would take that
+// mutex itself, and the running one, reaching it next, would take itself
+// for the second launch and exit. It returns when none answers in time.
+func handOverToRunningJellytool() {
+	si := jellytoolSingleInstance(nil)
+	if si == nil {
+		return
+	}
+	for deadline := time.Now().Add(30 * time.Second); !jellytoolInstanceHeld(si.UniqueID); time.Sleep(200 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			return
+		}
+	}
+	application.New(application.Options{Name: product.Name, SingleInstance: si})
+}
+
+// jellytoolInstanceID covers the data root, as the instance lock does, so a
+// portable build runs on its own.
+func jellytoolInstanceID() string {
+	sum := sha256.Sum256([]byte(appdir.Config()))
+	return "com.jellytoken.jellytool.i" + hex.EncodeToString(sum[:6])
+}
+
+// ShowMain waits for ready: a login start's window is hidden, and a tray
+// click before WebView2 has its first page would show it too early.
 func (h *jellytoolWindow) ShowMain(string) {
-	application.InvokeSync(func() { h.main.Show(); h.main.Focus() })
+	h.whenReady(func() { application.InvokeSync(func() { h.main.Show(); h.main.Focus() }) })
 }
 func (h *jellytoolWindow) HidePanel()          { application.InvokeSync(func() { h.main.Hide() }) }
 func (h *jellytoolWindow) FitPanel(int, Glide) {}

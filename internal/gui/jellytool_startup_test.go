@@ -42,7 +42,7 @@ func TestJellytoolFailedStartupPreservesLegacyProvider(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(filepath.Dir(exe), "jellytool-resources")); !os.IsNotExist(err) {
 		t.Fatal("startup fixture must have no bundled plugin resources")
 	}
-	if err := RunJellytool("dev"); err == nil {
+	if err := RunJellytool("dev", true); err == nil {
 		t.Fatal("startup without bundled resources succeeded")
 	}
 	after, err := provider.Stored()

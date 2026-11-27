@@ -1701,6 +1701,21 @@ P1 implementation is recorded in [its historical report](../plans/jellytool-plug
 The download-only update behavior above is enforced in the shared updater and
 routes, independently of what settings were copied into the product's data root.
 
+`Jellytool tray` (the login start the Windows setup writes) starts with the
+tray and gateway and the window hidden; no argument or `app` shows it. Closing
+the window hides it, and the tray reopens it. `ShowMain` waits for `ready`,
+which on Windows is WebView2's first page (as in magpie's `Run`), so a tray
+click or second launch just after a login start can't show a webview with no
+controller. The data root's instance lock stops a second copy. On Windows that
+copy hands over first: `jellytoolSingleInstance` gives the running app a Wails
+single-instance id derived from the data root, and a launch that loses the lock
+waits (up to 30s) for that id's mutex to exist (`jellytoolInstanceHeld`,
+`OpenMutex` on Wails' `wails-app-<id>-sim`), then lets Wails notify the running
+app, which shows its window (nothing for `tray`), and exits. Asking before the
+mutex exists would let the second launch take it and the starting app exit
+instead. The Mac reopens the app through LaunchServices; Linux keeps the lock's
+error.
+
 
 Jellytool's recommendation picker lives only in Get started's model step.
 Its Recommendations and Selected tabs share one local selection. Each model is
