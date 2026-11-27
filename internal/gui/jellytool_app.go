@@ -107,6 +107,9 @@ func RunJellytool(version string) error {
 		Linux:      application.LinuxOptions{ProgramName: "jellytool", ApplicationID: "org.wails.Jellytool"}, // the id Wails derived from the old Name
 		OnShutdown: stop,
 	})
+	if !webView2Check(h.app) {
+		return nil
+	}
 	h.app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		go func() {
 			select {

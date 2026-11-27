@@ -1920,7 +1920,8 @@ passed as `--bun /absolute/bun`; cross-target Buns use mappings such as
 cross-target Bun; it records the target OS/architecture in the runtime lock
 and the application verifies it at startup. Windows packages also check the staged
 `bun.exe` against the executable digest from the pinned Bun release for that
-architecture (x64 baseline or ARM64) before writing the lock.
+architecture (x64 baseline or ARM64) before writing the lock. At launch,
+Jellytool offers the WebView2 download if the runtime is missing.
 The output directory must not
 already exist:
 
