@@ -1933,6 +1933,20 @@ python3 build/jellytool/package-multi.py \
   --bun windows/arm64=/absolute/bun-windows-arm64.exe
 ```
 
+macOS builds target macOS 13 (`MACOS_MIN`): the bundled Bun 1.4.2 is built
+for 13, so the cgo objects (`MACOSX_DEPLOYMENT_TARGET`, `-mmacosx-version-min`)
+and `LSMinimumSystemVersion` take the same value; `package.py` does the same.
+`--sign-identity "Developer ID Application: …"` signs the macOS app and DMG
+with the hardened runtime, and `--notary-profile <notarytool keychain profile>`
+also notarizes, staples and runs `spctl` on each DMG (environment
+`JELLYTOOL_SIGN_IDENTITY` / `JELLYTOOL_NOTARY_PROFILE`). Bun is signed, with
+[`bun.entitlements`](../../build/jellytool/bun.entitlements) (JIT, unsigned
+executable memory, no library validation), as a copy before `jellytool-pack`
+runs, because `runtime-lock.json` records its SHA-256 and the app refuses to
+start when it differs; after packing the bundled `bun` is only verified, never
+re-signed. A notarization that is not `Accepted` fails the build with Apple's
+log. Without these options nothing is signed.
+
 ### Jellytool menu bar and supplier guidance
 
 From the 2026-11-09 development build, Jellytool creates its status-bar icon

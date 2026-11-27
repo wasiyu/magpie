@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build an unsigned local Jellytool.app with offline plugin resources."""
 import argparse
+import os
 from pathlib import Path
 import plistlib
 import re
@@ -45,7 +46,13 @@ resources.mkdir()
 ldflags = f'-X main.version={args.version}'
 if args.update_feed:
     ldflags += f' -X github.com/yetone/magpie/internal/update.JellytoolFeed={args.update_feed}'
-subprocess.run(['go', 'build', '-tags', 'jellytool,production', '-ldflags', ldflags, '-o', str(macos / 'jellytool'), '.'], cwd=root, check=True)
+# Bun 1.4.2 needs macOS 13, so the cgo objects and LSMinimumSystemVersion
+# target it too (package-multi.py's MACOS_MIN).
+macos_min = '13.0'
+go_env = dict(os.environ, MACOSX_DEPLOYMENT_TARGET=macos_min)
+for variable in ('CGO_CFLAGS', 'CGO_LDFLAGS'):
+    go_env[variable] = (os.environ.get(variable, '-O2 -g') + f' -mmacosx-version-min={macos_min}').strip()
+subprocess.run(['go', 'build', '-tags', 'jellytool,production', '-ldflags', ldflags, '-o', str(macos / 'jellytool'), '.'], cwd=root, env=go_env, check=True)
 subprocess.run(['go', 'run', './cmd/jellytool-pack', str(bun), str(resources / 'jellytool')], cwd=root, check=True)
 # Use the same A2 app artwork as the native window; keep the supplier logo separate.
 iconset = output.parent / 'jellytool.iconset'
@@ -79,5 +86,5 @@ with (output / 'Contents/Info.plist').open('wb') as f:
                   'CFBundleIconFile': 'jellytool.icns', 'CFBundlePackageType': 'APPL',
                   'CFBundleShortVersionString': args.version if args.version != 'dev' else '0.0.0',
                   'CFBundleVersion': args.build or (args.version if args.version != 'dev' else '0.0.0'),
-                  'LSMinimumSystemVersion': '12.0', 'NSHighResolutionCapable': True, 'LSHasLocalizedDisplayName': True}, f)
+                  'LSMinimumSystemVersion': macos_min, 'NSHighResolutionCapable': True, 'LSHasLocalizedDisplayName': True}, f)
 print(output)

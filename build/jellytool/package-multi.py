@@ -2,6 +2,7 @@
 """Build Jellytool archives for several OS/architecture targets."""
 
 import argparse
+import json
 import os
 from pathlib import Path
 import platform
@@ -14,6 +15,14 @@ from urllib.parse import urlsplit
 
 
 TARGET_RE = re.compile(r"^(darwin|linux|windows)/(amd64|arm64)$")
+# The bundled Bun 1.4.2 is built for macOS 13 (its LC_BUILD_VERSION minos), so
+# the app cannot start below it whatever the Go binary targets. The cgo build
+# and LSMinimumSystemVersion both take this one value.
+MACOS_MIN = "13.0"
+# Bun's JavaScriptCore needs JIT memory and loads unsigned native addons
+# under the hardened runtime; the main binary needs none of these.
+BUN_ENTITLEMENTS = Path(__file__).with_name("bun.entitlements")
+MACHO_MAGIC = {b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf", b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"}
 
 
 def host_goos():
@@ -54,6 +63,10 @@ def validate_options(args):
         raise ValueError("a release version requires --update-feed, unless --build is set for a local production artifact")
     if args.version == "dev" and args.build:
         raise ValueError("a build marker requires a release version")
+    if args.notary_profile and not args.sign_identity:
+        raise ValueError("--notary-profile requires --sign-identity")
+    if args.sign_identity and not args.sign_identity.startswith("Developer ID Application:"):
+        raise ValueError('--sign-identity must name a "Developer ID Application: …" certificate')
 
 
 def parse_bun_options(options):
@@ -116,6 +129,64 @@ def copy_common_files(root, package_dir, resources):
     shutil.copyfile(root / "LICENSE", resources / "LICENSE")
     intro, separator, notices = (root / "THIRD_PARTY_NOTICES").read_text().partition("\n----------------")
     (resources / "THIRD_PARTY_NOTICES").write_text(intro.replace("magpie", "Jellytool") + separator + notices)
+
+
+def codesign(path, identity, entitlements=None):
+    command = ["codesign", "--force", "--options", "runtime", "--timestamp", "--sign", identity]
+    if entitlements:
+        command += ["--entitlements", str(entitlements)]
+    subprocess.run(command + [str(path)], check=True)
+
+
+def signed_bun_copy(bun, folder, identity):
+    """Sign a copy of Bun, so the runtime lock the packer writes hashes the
+    signed bytes. Re-signing the bundled bun after packing changes its digest
+    and Jellytool refuses to start."""
+    copy = Path(folder) / "bun"
+    shutil.copyfile(bun, copy)
+    copy.chmod(0o755)
+    codesign(copy, identity, BUN_ENTITLEMENTS)
+    return copy
+
+
+def is_macho(path):
+    with path.open("rb") as stream:
+        head = stream.read(8)
+    # 0xcafebabe is also a Java class; a fat Mach-O has a small arch count there.
+    return head[:4] in MACHO_MAGIC and (head[:4] != b"\xca\xfe\xba\xbe" or int.from_bytes(head[4:8], "big") < 32)
+
+
+def sign_app(app, identity):
+    """Seal the bundle from the inside out. Bun was signed before packing and
+    is left untouched; any other Mach-O in the resources is signed here."""
+    bun = app / "Contents/Resources/jellytool/bun"
+    subprocess.run(["codesign", "--verify", "--strict", str(bun)], check=True)
+    for path in sorted((app / "Contents/Resources").rglob("*"), key=lambda p: -len(p.parts)):
+        if path != bun and path.is_file() and not path.is_symlink() and is_macho(path):
+            codesign(path, identity)
+    codesign(app, identity)
+    subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
+
+
+def notarize(archive, profile):
+    """Submit to Apple's notary service, staple the ticket and check Gatekeeper."""
+    result = subprocess.run([
+        "xcrun", "notarytool", "submit", str(archive), "--keychain-profile", profile,
+        "--wait", "--timeout", "45m", "--output-format", "json",
+    ], capture_output=True, text=True, timeout=50 * 60)
+    try:
+        reply = json.loads(result.stdout)
+    except ValueError:
+        reply = {}
+    if reply.get("status") != "Accepted":
+        detail = result.stderr.strip() or result.stdout.strip()
+        if reply.get("id"):
+            log = subprocess.run(["xcrun", "notarytool", "log", reply["id"], "--keychain-profile", profile],
+                                 capture_output=True, text=True, timeout=120)
+            detail = log.stdout.strip() or log.stderr.strip() or detail
+        raise RuntimeError(f"notarization of {archive.name} ended {reply.get('status', 'without a status')}:\n{detail}")
+    subprocess.run(["xcrun", "stapler", "staple", str(archive)], check=True)
+    subprocess.run(["spctl", "--assess", "--type", "install", "-vv", str(archive)], check=True)
 
 
 def archive_package(package_dir, target):
@@ -192,6 +263,12 @@ def build_target(root, go, target, bun, staging, args, env, host):
     if goos == "windows":
         ldflags += " -H windowsgui"
     build_env = dict(env, GOOS=goos, GOARCH=goarch, CGO_ENABLED="0" if goos == "windows" else "1")
+    if goos == "darwin":
+        # Without a target clang builds cgo objects for the SDK's own macOS
+        # version, which may call APIs missing from older systems.
+        build_env["MACOSX_DEPLOYMENT_TARGET"] = MACOS_MIN
+        for variable in ("CGO_CFLAGS", "CGO_LDFLAGS"):
+            build_env[variable] = (env.get(variable, "-O2 -g") + f" -mmacosx-version-min={MACOS_MIN}").strip()
     tags = ["jellytool", "production"]
     if goos == "linux":
         tags.append("gtk3")
@@ -199,13 +276,16 @@ def build_target(root, go, target, bun, staging, args, env, host):
         str(go), "build", "-tags", ",".join(tags), "-trimpath", "-ldflags", ldflags,
         "-o", str(binary), ".",
     ], cwd=root, env=build_env, check=True)
-    pack = [str(go), "run", "./cmd/jellytool-pack", str(bun.resolve(strict=True)), str(resources)]
-    if target != host:
-        pack += ["--target", target]
-    pack_env = dict(env)
-    for variable in ("GOOS", "GOARCH", "CGO_ENABLED"):
-        pack_env.pop(variable, None)
-    subprocess.run(pack, cwd=root, env=pack_env, check=True)
+    sign = goos == "darwin" and args.sign_identity
+    with tempfile.TemporaryDirectory(prefix="jellytool-bun-") as signing:
+        packed_bun = signed_bun_copy(bun.resolve(strict=True), signing, args.sign_identity) if sign else bun.resolve(strict=True)
+        pack = [str(go), "run", "./cmd/jellytool-pack", str(packed_bun), str(resources)]
+        if target != host:
+            pack += ["--target", target]
+        pack_env = dict(env)
+        for variable in ("GOOS", "GOARCH", "CGO_ENABLED"):
+            pack_env.pop(variable, None)
+        subprocess.run(pack, cwd=root, env=pack_env, check=True)
     copy_common_files(root, package_dir, resources)
     if goos == "darwin":
         stage_icon(root, app / "Contents/Resources")
@@ -224,9 +304,17 @@ def build_target(root, go, target, bun, staging, args, env, host):
                 "CFBundleIconFile": "jellytool.icns", "CFBundlePackageType": "APPL",
                 "CFBundleShortVersionString": args.version if args.version != "dev" else "0.0.0",
                 "CFBundleVersion": args.build or (args.version if args.version != "dev" else "0.0.0"),
-                "LSMinimumSystemVersion": "12.0", "NSHighResolutionCapable": True, "LSHasLocalizedDisplayName": True,
+                "LSMinimumSystemVersion": MACOS_MIN, "NSHighResolutionCapable": True, "LSHasLocalizedDisplayName": True,
             }, stream)
-    return archive_package(package_dir, target)
+        if sign:
+            sign_app(app, args.sign_identity)
+    name = archive_package(package_dir, target)
+    if sign:
+        archive = staging / name
+        subprocess.run(["codesign", "--force", "--timestamp", "--sign", args.sign_identity, str(archive)], check=True)
+        if args.notary_profile:
+            notarize(archive, args.notary_profile)
+    return name
 
 
 def main(argv=None):
@@ -238,6 +326,10 @@ def main(argv=None):
     parser.add_argument("--version", default="dev", help="Jellytool release version")
     parser.add_argument("--build", default="", help="numeric build marker for a local versioned artifact")
     parser.add_argument("--update-feed", default="", help="HTTPS URL of the Jellytool update JSON")
+    parser.add_argument("--sign-identity", default=os.environ.get("JELLYTOOL_SIGN_IDENTITY", ""),
+                        help='macOS: "Developer ID Application: …" certificate to sign the app and DMG (env JELLYTOOL_SIGN_IDENTITY)')
+    parser.add_argument("--notary-profile", default=os.environ.get("JELLYTOOL_NOTARY_PROFILE", ""),
+                        help="macOS: notarytool keychain profile; notarizes and staples each DMG (env JELLYTOOL_NOTARY_PROFILE)")
     args = parser.parse_args(argv)
     try:
         validate_options(args)
