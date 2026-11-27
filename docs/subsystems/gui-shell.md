@@ -1706,15 +1706,19 @@ tray and gateway and the window hidden; no argument or `app` shows it. Closing
 the window hides it, and the tray reopens it. `ShowMain` waits for `ready`,
 which on Windows is WebView2's first page (as in magpie's `Run`), so a tray
 click or second launch just after a login start can't show a webview with no
-controller. The data root's instance lock stops a second copy. On Windows that
-copy hands over first: `jellytoolSingleInstance` gives the running app a Wails
-single-instance id derived from the data root, and a launch that loses the lock
-waits (up to 30s) for that id's mutex to exist (`jellytoolInstanceHeld`,
-`OpenMutex` on Wails' `wails-app-<id>-sim`), then lets Wails notify the running
-app, which shows its window (nothing for `tray`), and exits. Asking before the
-mutex exists would let the second launch take it and the starting app exit
-instead. The Mac reopens the app through LaunchServices; Linux keeps the lock's
-error.
+controller. The data root's instance lock stops a second copy. On Windows
+that copy hands over first: `jellytoolSingleInstance` gives the running app a
+Wails single-instance id derived from the data root, and a launch that loses
+the lock waits (up to 30s) for that id's mutex to exist
+(`jellytoolInstanceHeld`, `OpenMutex` on Wails' `wails-app-<id>-sim`), then
+lets Wails notify the running app, which shows its window (nothing for
+`tray`), and exits. Asking before the mutex exists would let the second launch
+take it and the starting app exit instead. The Mac reopens the app through
+LaunchServices; Linux keeps the lock's error. Open at login's Windows Run
+value is named by `product.ID` (`jellytool`; `magpie` for magpie), so the two
+never start or remove each other's. A Jellytool start moves a `magpie` value
+an older build wrote for this same exe to `jellytool`, with Task Manager's
+switch for it (`autostart.Refresh`, Windows only); a real magpie's is left.
 
 
 Jellytool's recommendation picker lives only in Get started's model step.
@@ -1924,7 +1928,12 @@ desktop shortcuts, and registers an uninstaller. On a system the app may not
 start on (32-bit Windows, a build before Windows 10 1809, or the other
 architecture's package) it warns and lets the user go on. Its finish page
 offers to open Jellytool, through Explorer so an elevated setup doesn't start
-it as administrator. `build/jellytool/ico.go` writes the app artwork
+it as administrator. A first install in a mode writes the installing user's
+HKCU Run value `jellytool` = `"<dir>\Jellytool.exe" tray`, the value Settings'
+Open at login reads and turns off; a reinstall or update leaves it as the user
+set it. The uninstaller removes the shortcuts, that user's Run value and Task
+Manager's switch for it. Other users of an all-users install have no login
+start until they turn it on. `build/jellytool/ico.go` writes the app artwork
 (`jellytool-app.png`) as a .ico of nine sizes; it is the setup's and
 uninstaller's icon, and go-winres links it into `Jellytool.exe` as icon group
 #3 (the window's and taskbar's, as `TestWindowsIconIsResourceThree` explains),

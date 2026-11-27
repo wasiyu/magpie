@@ -220,11 +220,17 @@ def notarize(archive, profile):
 #
 # The setup may run elevated (an administrator in either mode), so the
 # finish page opens Jellytool through Explorer, as the signed-in user, not
-# as administrator.
+# as administrator. Jellytool opens at login from the installing user's Run
+# value "jellytool", the one Settings' Open at login reads, writes and turns
+# off (internal/autostart), started with `tray`: the tray and gateway, no
+# window. It is written only when this mode had no install before, so a
+# reinstall or update keeps what the user chose since.
 NSIS_TEMPLATE = r"""Unicode true
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jellytool"
 !define OLD_DIR "$LOCALAPPDATA\Programs\Jellytool"
 !define PACKAGE_ARCH "@ARCH@"
+!define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
+!define APPROVED_KEY "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
 ; An administrator chooses: for every user in Program Files (the default, one
 ; UAC prompt at start) or for themself. A standard user gets no prompt and
 ; installs for themself under %LOCALAPPDATA%\Programs, which needs no admin.
@@ -249,6 +255,7 @@ Name "Jellytoken助手"
 OutFile "@ARCHIVE@"
 SetCompressor /SOLID lzma
 @ICON_DEFINES@Var OldDir
+Var Installed
 !insertmacro MULTIUSER_PAGE_INSTALLMODE
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE DirectoryLeave
 !insertmacro MUI_PAGE_DIRECTORY
@@ -384,6 +391,8 @@ Function DirectoryLeave
 FunctionEnd
 
 Section
+  ; read before this install writes it: none is a first install in this mode
+  ReadRegStr $Installed SHCTX "${UNINST_KEY}" "InstallLocation"
   ; A silent install has no pages, so it stops here without asking.
   Call FindOldDir
   !insertmacro RunStopScript "$INSTDIR|$OldDir" "1"
@@ -409,6 +418,9 @@ Section
   Delete "$SMPROGRAMS\Jellytool.lnk"
   CreateShortcut "$SMPROGRAMS\Jellytoken助手.lnk" "$INSTDIR\Jellytool.exe"
   CreateShortcut "$DESKTOP\Jellytoken助手.lnk" "$INSTDIR\Jellytool.exe"
+  ${If} $Installed == ""
+    WriteRegStr HKCU "${RUN_KEY}" "jellytool" '"$INSTDIR\Jellytool.exe" tray'
+  ${EndIf}
   WriteRegStr SHCTX "${UNINST_KEY}" "DisplayName" "Jellytoken助手"
   WriteRegStr SHCTX "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\Jellytool.exe"
   WriteRegStr SHCTX "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
@@ -455,6 +467,9 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\Jellytoken助手.lnk"
   Delete "$SMPROGRAMS\Jellytool.lnk"
   Delete "$DESKTOP\Jellytoken助手.lnk"
+  ; the uninstalling user's login start, and Task Manager's switch for it
+  DeleteRegValue HKCU "${RUN_KEY}" "jellytool"
+  DeleteRegValue HKCU "${APPROVED_KEY}" "jellytool"
   DeleteRegKey SHCTX "${UNINST_KEY}"
 SectionEnd
 """

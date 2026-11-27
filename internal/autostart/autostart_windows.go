@@ -3,12 +3,15 @@ package autostart
 import (
 	"errors"
 
+	"github.com/yetone/magpie/internal/product"
 	"golang.org/x/sys/windows/registry"
 )
 
 const (
 	runKey = `Software\Microsoft\Windows\CurrentVersion\Run`
-	name   = "magpie"
+	// the product's own value, so Jellytool's never starts or stops magpie
+	// (its installer writes the same one)
+	name = product.ID
 	// where Task Manager's Startup apps keeps an entry switched off: an odd
 	// first byte is off
 	approvedKey = `Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run`
@@ -115,8 +118,58 @@ func disable() error {
 	return nil
 }
 
-// refresh: nothing an older magpie wrote here needs writing again
-func refresh() error { return nil }
+// legacyName is the value Jellytool wrote before its Run value took the
+// product's name: magpie's, which Jellytool's Open at login no longer reads.
+const legacyName = "magpie"
+
+// refresh: Jellytool takes over a legacy value that opens this copy, so
+// Settings sees it and can turn it off, with Task Manager's switch for it.
+// A value of a real magpie (another exe) is left be.
+func refresh() error {
+	if !product.Jellytool {
+		return nil
+	}
+	exe, err := self()
+	if err != nil {
+		return err
+	}
+	k, err := openRunKey(registry.CURRENT_USER, runKey, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		if errors.Is(err, registry.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	defer k.Close()
+	v, _, err := k.GetStringValue(legacyName)
+	if err != nil {
+		if errors.Is(err, registry.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if _, ok := repointed(v, exe, exe); !ok {
+		return nil
+	}
+	if _, _, err := k.GetStringValue(name); errors.Is(err, registry.ErrNotExist) {
+		if err := k.SetStringValue(name, v); err != nil {
+			return err
+		}
+		if a, err := openApprovedKey(registry.CURRENT_USER, approvedKey, registry.QUERY_VALUE|registry.SET_VALUE); err == nil {
+			if b, _, err := a.GetBinaryValue(legacyName); err == nil {
+				err = a.SetBinaryValue(name, b)
+				if err == nil {
+					err = a.DeleteValue(legacyName)
+				}
+			}
+			a.Close()
+			if err != nil && !errors.Is(err, registry.ErrNotExist) {
+				return err
+			}
+		}
+	}
+	return k.DeleteValue(legacyName)
+}
 
 // heldBack: nothing here is switched off apart from the record itself
 func heldBack() bool { return false }

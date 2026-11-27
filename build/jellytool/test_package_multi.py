@@ -85,7 +85,7 @@ class PackageMultiTests(unittest.TestCase):
         self.assertEqual(bun.read_bytes(), b"\xcf\xfa\xed\xfe original bun", "the caller's Bun must not be modified")
         return calls
 
-    def test_windows_installer_opens_the_app(self):
+    def test_windows_installer_opens_the_app_and_starts_it_at_login(self):
         script = packager.nsis_script("out.exe", "pkg", "x64", icon="app.ico")
         section = script[script.index("\nSection\n"):script.index("SectionEnd")]
         uninstall = script[script.index('Section "Uninstall"'):]
@@ -99,6 +99,16 @@ class PackageMultiTests(unittest.TestCase):
         # A desktop shortcut beside the Start menu's, in the same shell context.
         self.assertIn('CreateShortcut "$DESKTOP\\Jellytoken助手.lnk" "$INSTDIR\\Jellytool.exe"', section)
         self.assertIn('Delete "$DESKTOP\\Jellytoken助手.lnk"', uninstall)
+        # The login start is the value internal/autostart reads (product.ID,
+        # "exe" tray), written on a first install only: read before
+        # InstallLocation is written, so a reinstall keeps the user's choice.
+        run = 'WriteRegStr HKCU "${RUN_KEY}" "jellytool" \'"$INSTDIR\\Jellytool.exe" tray\''
+        self.assertIn(run, section)
+        self.assertLess(section.index('ReadRegStr $Installed SHCTX "${UNINST_KEY}" "InstallLocation"'),
+                        section.index('WriteRegStr SHCTX "${UNINST_KEY}" "InstallLocation"'))
+        self.assertIn('${If} $Installed == ""\n    ' + run, section)
+        self.assertIn('DeleteRegValue HKCU "${RUN_KEY}" "jellytool"', uninstall)
+        self.assertIn('DeleteRegValue HKCU "${APPROVED_KEY}" "jellytool"', uninstall)
         # The setup and uninstaller take the app's icon when there is one.
         self.assertIn('!define MUI_ICON "app.ico"\n!define MUI_UNICON "app.ico"', script)
         self.assertNotIn("MUI_ICON", packager.nsis_script("out.exe", "pkg", "x64"))
@@ -116,7 +126,9 @@ class PackageMultiTests(unittest.TestCase):
         self.assertNotIn("$PROGRAMFILES\\", script)
         # The entry goes where the mode says, and its folder is read back.
         self.assertIn('WriteRegStr SHCTX "${UNINST_KEY}" "InstallLocation" "$INSTDIR"', script)
-        self.assertNotRegex(script, r'WriteReg\w+ HK(LM|CU) ')
+        # Only the login start is the user's own (HKCU Run, as Settings' Open
+        # at login reads it); the uninstall entry follows the mode.
+        self.assertNotRegex(script, r'WriteReg\w+ HK(LM|CU) (?!"\$\{RUN_KEY\}")')
         self.assertIn('!define MULTIUSER_INSTALLMODE_INSTDIR_REGISTRY_VALUENAME "InstallLocation"', script)
         # The registry is read and written in its 64-bit view before MultiUser looks.
         init = script[script.index("Function .onInit"):]

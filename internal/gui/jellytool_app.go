@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -17,6 +18,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/yetone/magpie/internal/appdir"
+	"github.com/yetone/magpie/internal/autostart"
 	"github.com/yetone/magpie/internal/filelock"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/library"
@@ -51,6 +53,12 @@ func RunJellytool(version string, showMain bool) error {
 		return errors.New(product.Name + " is already running or its data directory cannot be locked")
 	}
 	defer unlock()
+	if runtime.GOOS == "windows" {
+		// a login start an older Jellytool wrote under magpie's name
+		if err := autostart.Refresh(); err != nil {
+			log.Println("open at login:", err)
+		}
+	}
 	if err := ensureJellytoolModelConfig(); err != nil {
 		return err
 	}
