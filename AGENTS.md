@@ -51,6 +51,37 @@ itself (`launch.py <app> -- app`; `tray` starts it with the window hidden). Port
 builds use their own data root. See [the shell contract](docs/subsystems/gui-shell.md#local-jellytool-launches)
 for the readiness checks and offline regression command.
 
+## Building Jellytool packages to hand out
+
+A package anyone else installs (a colleague, a user) is built with
+[package-multi.py](build/jellytool/package-multi.py) for all four targets:
+`darwin/arm64` and `darwin/amd64` (DMGs), `windows/amd64` and
+`windows/arm64` (setups). Leaving out the Intel DMG is a missing package, not
+a smaller release.
+
+The macOS DMGs are always signed and notarized; an unsigned DMG is for a
+local test only and is never handed out. This Mac has both halves, so before
+building, and before ever calling a package unsigned, run:
+
+```sh
+security find-identity -v -p codesigning   # the "Developer ID Application: …" line
+xcrun notarytool history --keychain-profile jellytool-notary
+```
+
+Pass the first as `--sign-identity "Developer ID Application: …"` (or set
+`JELLYTOOL_SIGN_IDENTITY`) and `--notary-profile jellytool-notary`. The build
+then signs Bun before packing, signs the app and DMG, notarizes, staples and
+runs `spctl`; a rejected notarization fails it with Apple's log. Check the
+result with `spctl -a -t open --context context:primary-signature -v <dmg>`.
+If either command above finds nothing, stop and ask the owner; don't fall
+back to unsigned. The Windows setups have no code-signing certificate yet.
+
+Each target's Bun 1.4.2 is Bun's own release build, checked against the
+digests pinned in `internal/plugin/bun.go` (zips) and
+`internal/plugin/jellytool_bundle.go` (Windows `bun.exe`): x64 Windows takes
+the baseline build, Intel macOS the plain `bun-darwin-x64`. Version a package
+as the previous one plus one (`--version 0.1.N --build <yyyymmdd>.<n>`).
+
 ## Lessons
 
 Before changing code, read [LESSONS.md](LESSONS.md): what recent merged
