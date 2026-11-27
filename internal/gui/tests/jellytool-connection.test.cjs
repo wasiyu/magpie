@@ -37,8 +37,8 @@ function fixture(lang, theme) {
   const row = () => ({ id: "jellytoken", name: "Jellytoken", icon: "jellytoken", host: "fixture.invalid", chat: "plugin://jellytoken/v1", ready: true, off: !!w.off,
     key: { set: false }, keyList: [], models: (w.models || ["m1", "m2"]).map((id) => ({ id, name: id, on: w.chosen.includes(id) })), chosen: w.chosen, noModels: !w.chosen.length, agents: [], fallback: [],
     account: { agent: "jellytoken", agentName: "Jellytoken", agentIcon: "jellytoken", user: "fixture", signedOut: !!w.signedOut, logins: [{ user: "fixture", active: true, on: true }] } });
-  const providers = () => ({ providers: w.connected ? [row()] : [], presets: [], excluded: [], plugins: [{ id: "jellytoken", pid: "jellytoken", name: "Jellytoken", icon: "jellytoken", single: true, methods: [{ type: "api", label: "API key" }] }], gateway: { running: true, window: true } });
-  const state = () => ({ agents: [...(w.wired ? [{ id: "codex", name: "Codex", icon: "generic", path: "/fixture/codex", wired: true, fields: [{ key: "model", value: "jellytoken/m1", options: [{ value: "jellytoken/m1", ref: "jellytoken/m1", label: "m1" }] }] }] : []), ...(w.extraAgents || [])], profiles: [], served: w.chosen.length, settings: { lang, theme } });
+  const providers = () => ({ providers: [...(w.connected ? [row()] : []), ...(w.extraProviders || [])], presets: [], excluded: [], plugins: [{ id: "jellytoken", pid: "jellytoken", name: "Jellytoken", icon: "jellytoken", single: true, methods: [{ type: "api", label: "API key" }] }], gateway: { running: true, window: true } });
+  const state = () => ({ agents: [...(w.wired ? [{ id: "codex", name: "Codex", icon: "generic", path: "/fixture/codex", wired: true, fields: [{ key: "model", value: "jellytoken/m1", options: [{ value: "jellytoken/m1", ref: "jellytoken/m1", label: "m1" }] }] }] : []), ...(w.extraAgents || [])], profiles: [], served: w.chosen.length + (w.extraProviders || []).reduce((n, p) => n + p.chosen.length, 0), settings: { lang, theme } });
   const config = () => ({ baseURL: w.baseURL, api: w.api, signedIn: w.connected });
   w.serve = async (route) => {
     const req = route.request(), u = new URL(req.url());
@@ -738,6 +738,24 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.deepEqual(w.posts, [], "selection remains a local draft");
     });
   }
+}
+
+for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) for (const lang of ["en", "zh"]) {
+  test(`${engine} ${lang}: Quick Start lists only Jellytoken's saved models`, async (t) => {
+    const { context, page } = await newPage(engine, { reducedMotion: "reduce" });
+    t.after(() => closePage(context));
+    const w = fixture(lang, "light"), errors = []; w.connected = true; w.chosen = ["m1"];
+    const other = (id, chosen) => ({ id, name: id, ready: true, models: chosen.map((m) => ({ id: m, name: m, on: true })), chosen, agents: [], fallback: [], account: { user: "fixture", logins: [{ user: "fixture", active: true, on: true }] } });
+    w.extraProviders = [other("sub2api-claude", ["claude-opus-5-5", "claude-sonnet-5-5"]), other("sub-anti", ["gemini-3.8-flash"])];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.route("**/*", w.serve);
+    await page.goto("http://jellytool.fixture/?view=quickstart");
+    const step = page.locator('#quickstart [data-step="models"]');
+    await step.locator(".qs-model-summary").waitFor();
+    assert.deepEqual(await step.locator(".qs-model-summary .qs-model-summary-name").allTextContents(), ["m1"], "another provider's picks stay out of the Jellytoken summary");
+    assert.equal(await step.locator(".guide-say").first().textContent(), await page.evaluate(() => t("{n} models selected", { n: 1 })), "the count is Jellytoken's, not every provider's");
+    assert.deepEqual(errors, []);
+  });
 }
 
 for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {

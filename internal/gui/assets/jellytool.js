@@ -751,7 +751,9 @@
     return step.li;
   }
 
-  const savedModels = (g) => g.ready.flatMap((p) => (p.chosen || []).map((id) => p.models?.find((m) => m.id === id) || { id }));
+  // Only Jellytoken's picks: the step and its picker are Jellytoken's, and
+  // another provider's models have no tier here.
+  const savedModels = (g) => g.ready.filter((p) => p.id === "jellytoken").flatMap((p) => (p.chosen || []).map((id) => p.models?.find((m) => m.id === id) || { id }));
   // Preserve the three configuration checks; the fourth step is a reference,
   // not a claim that a real request has been made in the selected agent.
   const guideSnapshot = (g) => JSON.stringify([locale, guideRevision, guideMessage, guideReplace, guideBusy, !!(providers || providersEarly?.got), state.served, g.source, g.models, g.agent, g.unknown,
@@ -812,6 +814,8 @@
       item.append(el("span", "qs-model-tier", tierLabel), el("span", "qs-model-summary-name", modelLabel(m)));
       summary.append(item);
     }
+    const say = modelStep.querySelector(".qs-copy > .guide-say");
+    if (say && g.models && !g.unknown) say.textContent = t("{n} models selected", { n: selected.length });
     if (summary.childElementCount) modelStep.querySelector(".qs-copy").append(summary);
     const choose = modelStep.querySelector(".guide-go");
     const expanded = !!guideModels && guideModelsOpen && g.source && !g.unknown;
