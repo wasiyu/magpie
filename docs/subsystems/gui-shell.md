@@ -1907,14 +1907,16 @@ in InstallLocation. It asks before closing running copies, closes them before
 replacing files, moves an earlier per-user install here, creates a Start menu
 shortcut, and registers an uninstaller. On a system the app may not start on
 (32-bit Windows, a build before Windows 10 1809, or the other architecture's
-package) it warns and lets the user go on. `build/jellytool/ico.go` writes the
-app artwork (`jellytool-app.png`) as a .ico of nine sizes; it is the setup's
-and uninstaller's icon, and go-winres links it into `Jellytool.exe` as icon
-group #3 (the window's and taskbar's, as `TestWindowsIconIsResourceThree`
-explains), with magpie's manifest and version information naming Jellytoken助手.
-The `.syso` exists in the repository root only during that `go build`. NSIS
-(makensis) must be available on the build host, and go-winres v0.3.3 must be
-reachable through the Go module proxy.
+package) it warns and lets the user go on. Its finish page offers to open
+Jellytool, through Explorer so an elevated setup doesn't start it as
+administrator. `build/jellytool/ico.go` writes the app artwork (`jellytool-
+app.png`) as a .ico of nine sizes; it is the setup's and uninstaller's icon,
+and go-winres links it into `Jellytool.exe` as icon group #3 (the window's and
+taskbar's, as `TestWindowsIconIsResourceThree` explains), with magpie's
+manifest and version information naming Jellytoken助手. The `.syso` exists in the
+repository root only during that `go build`. NSIS (makensis) must be available
+on the build host, and go-winres v0.3.3 must be reachable through the Go module
+proxy.
 The macOS image contains
 only `Jellytool.app` and an `Applications` link to `/Applications`. Its volume
 name repeats the drag-to-install instruction; this guides installation but does

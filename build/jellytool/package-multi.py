@@ -217,6 +217,10 @@ def notarize(archive, profile):
 # The NSIS stub is 32-bit, so $PROGRAMFILES is "Program Files (x86)"; both
 # Windows builds are 64-bit (x64, ARM64) and MultiUser puts a per-machine
 # install in $PROGRAMFILES64. The script explains each step.
+#
+# The setup may run elevated (an administrator in either mode), so the
+# finish page opens Jellytool through Explorer, as the signed-in user, not
+# as administrator.
 NSIS_TEMPLATE = r"""Unicode true
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Jellytool"
 !define OLD_DIR "$LOCALAPPDATA\Programs\Jellytool"
@@ -249,6 +253,10 @@ SetCompressor /SOLID lzma
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE DirectoryLeave
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
+!define MUI_FINISHPAGE_RUN
+!define MUI_FINISHPAGE_RUN_TEXT "打开 Jellytoken助手"
+!define MUI_FINISHPAGE_RUN_FUNCTION OpenApp
+!insertmacro MUI_PAGE_FINISH
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.ConfirmLeave
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
@@ -326,6 +334,10 @@ Function .onInit
   ${If} $R0 != ""
     StrCpy $INSTDIR $R0
   ${EndIf}
+FunctionEnd
+
+Function OpenApp
+  Exec '"$WINDIR\explorer.exe" "$INSTDIR\Jellytool.exe"'
 FunctionEnd
 
 ; Sets $OldDir to another per-user install to move here, or "". Builds

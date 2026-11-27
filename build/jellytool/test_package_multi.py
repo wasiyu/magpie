@@ -85,8 +85,17 @@ class PackageMultiTests(unittest.TestCase):
         self.assertEqual(bun.read_bytes(), b"\xcf\xfa\xed\xfe original bun", "the caller's Bun must not be modified")
         return calls
 
-    def test_windows_installer_takes_the_app_icon(self):
+    def test_windows_installer_opens_the_app(self):
         script = packager.nsis_script("out.exe", "pkg", "x64", icon="app.ico")
+        section = script[script.index("\nSection\n"):script.index("SectionEnd")]
+        uninstall = script[script.index('Section "Uninstall"'):]
+        # The finish page opens it through Explorer: started by an elevated
+        # setup it would run as administrator.
+        self.assertIn("!define MUI_FINISHPAGE_RUN_FUNCTION OpenApp", script)
+        self.assertLess(script.index("MUI_PAGE_INSTFILES"), script.index("MUI_PAGE_FINISH"))
+        self.assertLess(script.index("MUI_PAGE_FINISH"), script.index("MUI_UNPAGE_CONFIRM"))
+        opener = script[script.index("Function OpenApp"):]
+        self.assertIn('Exec \'"$WINDIR\\explorer.exe" "$INSTDIR\\Jellytool.exe"\'', opener[:opener.index("FunctionEnd")])
         # The setup and uninstaller take the app's icon when there is one.
         self.assertIn('!define MUI_ICON "app.ico"\n!define MUI_UNICON "app.ico"', script)
         self.assertNotIn("MUI_ICON", packager.nsis_script("out.exe", "pkg", "x64"))
