@@ -99,6 +99,18 @@ func packJellytoolPlugins(ctx context.Context, bun, resources, goos, goarch stri
 	if err != nil {
 		return err
 	}
+	if goos == "windows" {
+		// Hashes of bun.exe extracted from the release ZIPs pinned in bunSums.
+		// A cross-build cannot execute --version, and the lock by itself
+		// would faithfully record any renamed executable supplied as Bun.
+		want := map[string]string{
+			"1.4.2/amd64": "15277c59ccd6c6c20f8dc9716c2b59c1776320d606b6a8658f70be8799519ca4",
+			"1.4.2/arm64": "3d7e98d3201c55c3bde6c069a5dfa0d34da9edc9145187c76594f685f8aa54c6",
+		}[BunVersion+"/"+goarch]
+		if sum != want {
+			return fmt.Errorf("expected official Bun %s for windows/%s (x64 uses the baseline build), got SHA-256 %s", BunVersion, goarch, sum)
+		}
+	}
 	lock, _ := json.MarshalIndent(jellytoolRuntimeLock{BunVersion, goos, goarch, sum}, "", "  ")
 	return os.WriteFile(filepath.Join(resources, "runtime-lock.json"), append(lock, '\n'), 0o600)
 }

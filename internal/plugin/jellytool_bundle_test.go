@@ -234,10 +234,20 @@ func TestJellytoolBundleTargetLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	resources := t.TempDir()
-	if err := PackJellytoolPluginsFor(context.Background(), bun, resources, "windows", "amd64"); err != nil {
+	for _, arch := range []string{"amd64", "arm64"} {
+		bad := t.TempDir()
+		err := PackJellytoolPluginsFor(context.Background(), bun, bad, "windows", arch)
+		if err == nil || !strings.Contains(err.Error(), "expected official Bun") {
+			t.Fatalf("windows/%s accepted an unrelated executable or failed unexpectedly: %v", arch, err)
+		}
+		if _, err := os.Stat(filepath.Join(bad, "runtime-lock.json")); !os.IsNotExist(err) {
+			t.Fatalf("invalid Windows bundle produced a lock: %v", err)
+		}
+	}
+	if err := PackJellytoolPluginsFor(context.Background(), bun, resources, "linux", "amd64"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(resources, "bun.exe")); err != nil {
+	if _, err := os.Stat(filepath.Join(resources, "bun")); err != nil {
 		t.Fatal(err)
 	}
 	var lock jellytoolRuntimeLock
@@ -245,7 +255,7 @@ func TestJellytoolBundleTargetLock(t *testing.T) {
 	if err != nil || json.Unmarshal(b, &lock) != nil {
 		t.Fatalf("runtime lock: %v", err)
 	}
-	if lock.OS != "windows" || lock.Arch != "amd64" || lock.Version != BunVersion {
+	if lock.OS != "linux" || lock.Arch != "amd64" || lock.Version != BunVersion {
 		t.Fatalf("runtime lock = %+v", lock)
 	}
 }

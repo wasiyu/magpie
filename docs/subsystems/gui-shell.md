@@ -1918,7 +1918,10 @@ Each target needs a Bun 1.4.2 executable for that target. A host Bun can be
 passed as `--bun /absolute/bun`; cross-target Buns use mappings such as
 `--bun windows/amd64=/absolute/bun.exe`. The packager never runs a
 cross-target Bun; it records the target OS/architecture in the runtime lock
-and the application verifies it at startup. The output directory must not
+and the application verifies it at startup. Windows packages also check the staged
+`bun.exe` against the executable digest from the pinned Bun release for that
+architecture (x64 baseline or ARM64) before writing the lock.
+The output directory must not
 already exist:
 
 ```sh
