@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yetone/magpie/internal/product"
 )
 
 // #1806 (ufec): Wails' "WebView2" is "" when its lookup fails, the version
@@ -27,8 +29,10 @@ func TestWebView2Missing(t *testing.T) {
 }
 
 // The box names the runtime, gives Microsoft's page and asks to open it
-// (Yes opens it), in each language the app speaks, English otherwise.
+// (Yes opens it), in each language the app speaks, English otherwise. The
+// commands and name are the product's: Jellytool says "jellytool web".
 func TestWebView2Notice(t *testing.T) {
+	web, tui := product.Text(`"magpie web"`), product.Text(`"magpie tui"`)
 	for _, lang := range []string{"en", "zh", "zh-TW", "ja", "de", "pt"} {
 		title, body := webView2Notice(lang)
 		if !strings.Contains(title, "WebView2") || !strings.Contains(body, "WebView2") {
@@ -40,7 +44,7 @@ func TestWebView2Notice(t *testing.T) {
 		if !strings.Contains(body, "winget install Microsoft.EdgeWebView2Runtime") {
 			t.Errorf("%s: no winget command in %q", lang, body)
 		}
-		if !strings.Contains(body, "magpie web") || !strings.Contains(body, "magpie tui") {
+		if !strings.Contains(body, web) || !strings.Contains(body, tui) {
 			t.Errorf("%s: doesn't say what works without it: %q", lang, body)
 		}
 		if strings.Contains(body, "%!") {
@@ -53,7 +57,7 @@ func TestWebView2Notice(t *testing.T) {
 	if _, body := webView2Notice("zh"); !strings.Contains(body, "运行时") {
 		t.Errorf("zh isn't Chinese: %q", body)
 	}
-	if title, _ := webView2Notice("pt"); title != "magpie needs WebView2" {
+	if title, _ := webView2Notice("pt"); title != product.Text("magpie needs WebView2") {
 		t.Errorf("pt: %q, want English", title)
 	}
 }
