@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -193,12 +194,31 @@ def sign_app(app, identity):
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
 
 
+# A signed DMG whose notarization failed is kept under this suffix, so it
+# can't be taken for one that may be handed out.
+UNNOTARIZED = "-unnotarized"
+
+
+class NotarizationFailed(RuntimeError):
+    """Notarizing, stapling or the Gatekeeper check of a signed DMG failed.
+    Nothing in the DMG depends on when it is notarized, so it is kept and
+    --notarize-only finishes it later."""
+
+    def __init__(self, archive, detail):
+        super().__init__(f"notarization of {archive.name} {detail}")
+        self.archive = archive
+
+
 def notarize(archive, profile):
     """Submit to Apple's notary service, staple the ticket and check Gatekeeper."""
-    result = subprocess.run([
-        "xcrun", "notarytool", "submit", str(archive), "--keychain-profile", profile,
-        "--wait", "--timeout", "45m", "--output-format", "json",
-    ], capture_output=True, text=True, timeout=50 * 60)
+    try:
+        result = subprocess.run([
+            "xcrun", "notarytool", "submit", str(archive), "--keychain-profile", profile,
+            "--wait", "--timeout", "45m", "--output-format", "json",
+        ], capture_output=True, text=True, timeout=50 * 60)
+    except subprocess.TimeoutExpired:
+        raise NotarizationFailed(archive, "had no answer in 50 minutes (network, Apple's service, or a locked "
+                                          "screen: the keychain profile can't be read while it is locked)") from None
     try:
         reply = json.loads(result.stdout)
     except ValueError:
@@ -206,12 +226,47 @@ def notarize(archive, profile):
     if reply.get("status") != "Accepted":
         detail = result.stderr.strip() or result.stdout.strip()
         if reply.get("id"):
-            log = subprocess.run(["xcrun", "notarytool", "log", reply["id"], "--keychain-profile", profile],
-                                 capture_output=True, text=True, timeout=120)
-            detail = log.stdout.strip() or log.stderr.strip() or detail
-        raise RuntimeError(f"notarization of {archive.name} ended {reply.get('status', 'without a status')}:\n{detail}")
-    subprocess.run(["xcrun", "stapler", "staple", str(archive)], check=True)
-    subprocess.run(["spctl", "--assess", "--type", "install", "-vv", str(archive)], check=True)
+            try:
+                log = subprocess.run(["xcrun", "notarytool", "log", reply["id"], "--keychain-profile", profile],
+                                     capture_output=True, text=True, timeout=120)
+                detail = log.stdout.strip() or log.stderr.strip() or detail
+            except subprocess.TimeoutExpired:
+                pass
+        if "No Keychain password item found" in detail:
+            detail += ("\n(The profile can't be read while the screen is locked; unlock it and try again. "
+                       f"If it really is gone, run: xcrun notarytool store-credentials {profile})")
+        raise NotarizationFailed(archive, f"ended {reply.get('status', 'without a status')}:\n{detail}")
+    for step in (["xcrun", "stapler", "staple", str(archive)], ["spctl", "--assess", "--type", "install", "-vv", str(archive)]):
+        result = subprocess.run(step, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise NotarizationFailed(archive, f"was accepted, but {' '.join(step[:-1])} failed:\n"
+                                              f"{(result.stderr or result.stdout).strip()}")
+
+
+def developer_id_signed(archive):
+    """Whether archive carries a valid signature by a Developer ID Application certificate."""
+    if subprocess.run(["codesign", "--verify", "--strict", str(archive)], capture_output=True).returncode != 0:
+        return False
+    shown = subprocess.run(["codesign", "-dvv", str(archive)], capture_output=True, text=True)
+    return "Authority=Developer ID Application:" in shown.stderr + shown.stdout
+
+
+def notarize_only(archive, profile):
+    """Finish a kept DMG: check its signature, notarize and staple it, and drop
+    the -unnotarized suffix. A failure leaves the file as it was."""
+    archive = archive.resolve()
+    if archive.suffix != ".dmg" or not archive.is_file():
+        raise ValueError(f"--notarize-only needs a .dmg file: {archive}")
+    if not developer_id_signed(archive):
+        raise ValueError(f"{archive.name} is not signed with a Developer ID Application certificate; build it again with --sign-identity")
+    notarize(archive, profile)
+    if archive.stem.endswith(UNNOTARIZED):
+        final = archive.with_name(archive.stem[:-len(UNNOTARIZED)] + archive.suffix)
+        if final.exists():
+            raise ValueError(f"{archive.name} is notarized, but {final.name} already exists; rename it yourself")
+        archive.rename(final)
+        archive = final
+    return archive
 
 
 # The NSIS stub is 32-bit, so $PROGRAMFILES is "Program Files (x86)"; both
@@ -596,7 +651,13 @@ def build_target(root, go, target, bun, staging, args, env, host):
         archive = staging / name
         subprocess.run(["codesign", "--force", "--timestamp", "--sign", args.sign_identity, str(archive)], check=True)
         if args.notary_profile:
-            notarize(archive, args.notary_profile)
+            try:
+                notarize(archive, args.notary_profile)
+            except NotarizationFailed as failed:
+                kept = archive.with_name(archive.stem + UNNOTARIZED + archive.suffix)
+                archive.rename(kept)
+                failed.archive = kept
+                raise
     return name
 
 
@@ -605,7 +666,7 @@ def main(argv=None):
     parser.add_argument("--go", type=Path, help="Go executable (otherwise PATH, then mise installations)")
     parser.add_argument("--bun", action="append", default=[], metavar="PATH|TARGET=PATH", help="Bun 1.4.2; repeat for cross targets")
     parser.add_argument("--target", action="append", help="target such as darwin/arm64 (repeatable; defaults to host plus Windows)")
-    parser.add_argument("--output", type=Path, required=True, help="new directory for the target archives")
+    parser.add_argument("--output", type=Path, help="new directory for the target archives")
     parser.add_argument("--version", default="dev", help="Jellytool release version")
     parser.add_argument("--build", default="", help="numeric build marker for a local versioned artifact")
     parser.add_argument("--update-feed", default="", help="HTTPS URL of the Jellytool update JSON")
@@ -613,7 +674,20 @@ def main(argv=None):
                         help='macOS: "Developer ID Application: …" certificate to sign the app and DMG (env JELLYTOOL_SIGN_IDENTITY)')
     parser.add_argument("--notary-profile", default=os.environ.get("JELLYTOOL_NOTARY_PROFILE", ""),
                         help="macOS: notarytool keychain profile; notarizes and staples each DMG (env JELLYTOOL_NOTARY_PROFILE)")
+    parser.add_argument("--notarize-only", type=Path, metavar="DMG",
+                        help="macOS: notarize, staple and check a signed DMG a build kept (…-unnotarized.dmg); builds nothing")
     args = parser.parse_args(argv)
+    if args.notarize_only:
+        try:
+            if not args.notary_profile:
+                raise ValueError("--notarize-only requires --notary-profile")
+            print(f"jellytool-package-multi: notarized {notarize_only(args.notarize_only, args.notary_profile)}")
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+            print(f"jellytool-package-multi: {error}", file=sys.stderr)
+            return 1
+        return 0
+    if not args.output:
+        parser.error("--output is required")
     try:
         validate_options(args)
         host = f"{host_goos()}/{host_goarch()}"
@@ -636,18 +710,32 @@ def main(argv=None):
         output.parent.mkdir(parents=True, exist_ok=True)
         staging = Path(tempfile.mkdtemp(prefix="." + output.name + "-", dir=output.parent))
         env = dict(os.environ, PATH=str(go.parent) + os.pathsep + os.environ.get("PATH", ""))
+        unnotarized = []
         try:
             print(f"Building {', '.join(targets)} in {output}", flush=True)
             for target in targets:
                 bun = target_bun(target, host, mapped, plain)
                 print(f"  {target} (Bun: {bun})", flush=True)
-                build_target(root, go, target, bun, staging, args, env, host)
+                try:
+                    build_target(root, go, target, bun, staging, args, env, host)
+                except NotarizationFailed as failed:
+                    # Signed and complete: only Apple's ticket is missing.
+                    print(f"jellytool-package-multi: {failed}", file=sys.stderr)
+                    unnotarized.append(failed.archive.name)
             staging.rename(output)
         except BaseException:
             shutil.rmtree(staging)
             raise
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
         print(f"jellytool-package-multi: {error}", file=sys.stderr)
+        return 1
+    if unnotarized:
+        print("jellytool-package-multi: these DMGs are signed but NOT notarized; don't hand them out. "
+              "Once the network or screen is back, finish each with:", file=sys.stderr)
+        for name in unnotarized:
+            command = ["python3", str(Path(__file__).resolve()), "--notarize-only", str(output / name),
+                       "--notary-profile", args.notary_profile]
+            print("  " + " ".join(shlex.quote(part) for part in command), file=sys.stderr)
         return 1
     return 0
 

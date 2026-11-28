@@ -1,6 +1,7 @@
 """Offline checks for the multi-platform Jellytool packager."""
 
 import importlib.util
+import io
 import json
 from pathlib import Path
 import plistlib
@@ -341,6 +342,110 @@ class PackageMultiTests(unittest.TestCase):
             self.assertEqual(packager.main(["--output", str(output), "--target", "darwin/arm64", "--bun", "/bun/darwin"]), 1)
             self.assertFalse(output.exists())
 
+
+    def test_failed_notarization_keeps_the_signed_dmg_marked(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with self.assertRaises(packager.NotarizationFailed) as failed:
+                self.build_darwin(folder, "Developer ID Application: Example (TEAM123456)", "notary",
+                                  {"id": "n1", "status": "Invalid"})
+            staging = Path(folder) / "staging"
+            self.assertEqual([p.name for p in staging.glob("*.dmg")], ["Jellytool-macOS-Apple-Silicon-unnotarized.dmg"])
+            self.assertEqual(failed.exception.archive, staging / "Jellytool-macOS-Apple-Silicon-unnotarized.dmg")
+
+    def test_unanswered_notarization_is_kept_and_names_the_locked_screen(self):
+        def run(command, **kwargs):
+            raise subprocess.TimeoutExpired(command, kwargs.get("timeout"))
+        with patch.object(packager.subprocess, "run", side_effect=run):
+            with self.assertRaisesRegex(packager.NotarizationFailed, "locked"):
+                packager.notarize(Path("/tmp/x.dmg"), "notary")
+
+    def test_failed_staple_is_a_notarization_failure(self):
+        def run(command, **kwargs):
+            if command[:3] == ["xcrun", "notarytool", "submit"]:
+                return subprocess.CompletedProcess(command, 0, json.dumps({"id": "n1", "status": "Accepted"}), "")
+            if command[:2] == ["xcrun", "stapler"]:
+                return subprocess.CompletedProcess(command, 65, "", "Could not validate ticket")
+            return subprocess.CompletedProcess(command, 0, "", "")
+        with patch.object(packager.subprocess, "run", side_effect=run):
+            with self.assertRaisesRegex(packager.NotarizationFailed, "accepted, but xcrun stapler staple failed"):
+                packager.notarize(Path("/tmp/x.dmg"), "notary")
+
+    def test_unnotarized_dmg_is_published_with_the_other_targets_and_fails(self):
+        def fake_build(root, go, target, bun, staging, args, env, host):
+            if target.startswith("darwin/"):
+                kept = staging / "Jellytool-macOS-Apple-Silicon-unnotarized.dmg"
+                kept.touch()
+                raise packager.NotarizationFailed(kept, "had no answer")
+            (staging / "Jellytool-Windows-x64-Setup.exe").touch()
+
+        with tempfile.TemporaryDirectory() as folder, \
+                patch.object(packager.sys, "platform", "darwin"), \
+                patch.object(packager.platform, "machine", return_value="arm64"), \
+                patch.object(packager, "find_executable", return_value=Path("/go/bin/go")), \
+                patch.object(packager, "build_target", side_effect=fake_build), \
+                patch.object(packager.sys, "stderr", new_callable=io.StringIO) as stderr:
+            output = Path(folder) / "dist"
+            result = packager.main([
+                "--output", str(output), "--target", "darwin/arm64", "--target", "windows/amd64",
+                "--bun", "/bun/darwin", "--bun", "windows/amd64=/bun/windows.exe",
+                "--sign-identity", "Developer ID Application: Example (TEAM123456)", "--notary-profile", "notary",
+            ])
+            self.assertEqual(result, 1)
+            self.assertEqual(sorted(p.name for p in output.iterdir()),
+                             ["Jellytool-Windows-x64-Setup.exe", "Jellytool-macOS-Apple-Silicon-unnotarized.dmg"])
+            self.assertIn(f"--notarize-only {output.resolve() / 'Jellytool-macOS-Apple-Silicon-unnotarized.dmg'} --notary-profile notary",
+                          stderr.getvalue())
+            self.assertIn("NOT notarized", stderr.getvalue())
+
+    def notarize_only(self, folder, authority="Developer ID Application: Example (TEAM123456)", status="Accepted", extra=()):
+        kept = Path(folder) / "Jellytool-macOS-Apple-Silicon-unnotarized.dmg"
+        kept.write_bytes(b"signed dmg")
+        calls = []
+
+        def run(command, **kwargs):
+            command = [str(part) for part in command]
+            calls.append(command)
+            if command[:2] == ["codesign", "-dvv"]:
+                return subprocess.CompletedProcess(command, 0, "", f"Executable={command[-1]}\nAuthority={authority}\n")
+            if command[:3] == ["xcrun", "notarytool", "submit"]:
+                return subprocess.CompletedProcess(command, 0, json.dumps({"id": "n1", "status": status}), "")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with patch.object(packager.subprocess, "run", side_effect=run), \
+                patch.object(packager.sys, "stderr", new_callable=io.StringIO), \
+                patch.object(packager.sys, "stdout", new_callable=io.StringIO):
+            result = packager.main(["--notarize-only", str(kept), *extra])
+        return result, kept, calls
+
+    def test_notarize_only_finishes_a_kept_dmg_and_drops_the_mark(self):
+        with tempfile.TemporaryDirectory() as folder:
+            result, kept, calls = self.notarize_only(folder, extra=("--notary-profile", "notary"))
+            self.assertEqual(result, 0)
+            self.assertFalse(kept.exists())
+            self.assertEqual((Path(folder) / "Jellytool-macOS-Apple-Silicon.dmg").read_bytes(), b"signed dmg")
+            names = [c[1] if c[0] == "xcrun" else c[0] for c in calls]
+            self.assertEqual(names, ["codesign", "codesign", "notarytool", "stapler", "spctl"])
+
+    def test_notarize_only_refuses_a_dmg_not_signed_with_developer_id(self):
+        with tempfile.TemporaryDirectory() as folder:
+            result, kept, calls = self.notarize_only(folder, authority="Apple Development: Example (TEAM123456)",
+                                                     extra=("--notary-profile", "notary"))
+            self.assertEqual(result, 1)
+            self.assertTrue(kept.exists())
+            self.assertFalse([c for c in calls if c[0] == "xcrun"], "an unsigned DMG was sent to Apple")
+
+    def test_notarize_only_failure_leaves_the_file_to_try_again(self):
+        with tempfile.TemporaryDirectory() as folder:
+            result, kept, _ = self.notarize_only(folder, status="Invalid", extra=("--notary-profile", "notary"))
+            self.assertEqual(result, 1)
+            self.assertTrue(kept.exists())
+            self.assertFalse((Path(folder) / "Jellytool-macOS-Apple-Silicon.dmg").exists())
+
+    def test_notarize_only_requires_a_profile(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(packager.os.environ, {"JELLYTOOL_NOTARY_PROFILE": ""}):
+            result, kept, calls = self.notarize_only(folder)
+            self.assertEqual(result, 1)
+            self.assertEqual(calls, [])
 
 if __name__ == "__main__":
     unittest.main()

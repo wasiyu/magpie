@@ -1998,8 +1998,22 @@ also notarizes, staples and runs `spctl` on each DMG (environment
 executable memory, no library validation), as a copy before `jellytool-pack`
 runs, because `runtime-lock.json` records its SHA-256 and the app refuses to
 start when it differs; after packing the bundled `bun` is only verified, never
-re-signed. A notarization that is not `Accepted` fails the build with Apple's
-log. Without these options nothing is signed.
+re-signed. Without these options nothing is signed.
+
+Notarization is the one step that depends on the network, Apple's service and
+an unlocked screen (notarytool can't read its keychain profile while the screen
+is locked, and then says the profile is missing or waits with no answer). A
+DMG is complete once it is signed, and Apple's ticket doesn't depend on when it
+is asked for, so a notarization that is not `Accepted`, has no answer in 50
+minutes, or whose staple or `spctl` check fails (`NotarizationFailed`) keeps
+the signed DMG as `…-unnotarized.dmg`. The other targets go on, the output
+directory is published, and the build exits 1 printing Apple's log and, per
+kept DMG, the command that finishes it:
+`package-multi.py --notarize-only <…-unnotarized.dmg> --notary-profile <profile>`
+checks that the DMG is signed by a Developer ID Application certificate,
+notarizes, staples and runs `spctl`, then drops the suffix; a failure leaves
+the file as it was. Any other failure still removes the whole staging folder,
+so no half-built package reaches the output.
 
 ### Jellytool menu bar and supplier guidance
 
