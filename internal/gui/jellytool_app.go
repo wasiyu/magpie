@@ -26,6 +26,7 @@ import (
 	"github.com/yetone/magpie/internal/proc"
 	"github.com/yetone/magpie/internal/product"
 	"github.com/yetone/magpie/internal/settings"
+	"github.com/yetone/magpie/internal/update"
 )
 
 // RunJellytool keeps Jellytool's app identity and bundled provider while using
@@ -41,9 +42,16 @@ func RunJellytool(version string, showMain bool) error {
 	if _, err := appdir.CheckEnv(); err != nil {
 		return err
 	}
+	// Opened from the disk image: offer Applications before anything starts,
+	// and before the lock, which an older Jellytool still running would hold
+	// (offerJellytoolMove). A login start (no window) never asks. Moved, the
+	// copy there opens once this process has exited.
+	if runtime.GOOS == "darwin" && showMain && offerJellytoolMove(update.Bundle()) {
+		return nil
+	}
 	// The guard is also taken on macOS, where Wails delegates single-instance
 	// handling to the bundle ID. Failure never falls through to an unlocked run.
-	unlock, held := filelock.Lock(filepath.Join(appdir.Config(), "jellytool-instance.lock"), time.Millisecond)
+	unlock, held := filelock.Lock(jellytoolInstanceLock(), time.Millisecond)
 	if !held {
 		// A shortcut opened while the login start holds the lock: hand the
 		// launch to it, as magpie's own second launch does. Wails exits this

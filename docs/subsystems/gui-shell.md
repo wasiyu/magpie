@@ -1943,8 +1943,24 @@ be available on the build host, and go-winres v0.3.3 must be reachable through
 the Go module proxy.
 The macOS image contains
 only `Jellytool.app` and an `Applications` link to `/Applications`. Its volume
-name repeats the drag-to-install instruction; this guides installation but does
-not enforce the application's launch location. It builds packages
+name repeats the drag-to-install instruction. A Jellytool opened from the image
+(or translocated, `update.Stuck`) asks, before its backend starts and before
+it takes the instance lock, to move to `/Applications`
+([`jellytool_move.go`](../../internal/gui/jellytool_move.go)). The order
+matters: opening a new image while an older Jellytool runs is how an update is
+installed by hand, and the held lock would otherwise end the launch before it
+asked anything. The process holding the lock (`lsof` on it) is named in the
+question, sent SIGTERM after the user agrees, and killed if the lock is not
+free after 15 seconds; the move stops, with a dialog, if it still runs. Then
+it copies itself with `ditto`, removes `com.apple.quarantine` from the copy
+(ditto keeps it, and a copy that has it is translocated and asks again), swaps
+it in for any Jellytool already there without ever leaving that path missing,
+falls back to the administrator prompt when `/Applications` is not writable,
+and relaunches the copy through `update.Relaunch` once it has exited and let
+go of the instance lock. Declining, or a failed move (shown in a dialog), lets
+the launch go on where it is (and, with an older one running, end on the
+held lock as before). A login start (`tray`) and a portable build
+never ask. It builds packages
 without installing or launching them. With no `--target`, a macOS or Linux
 host builds its native target and Windows `amd64`/`arm64`; a Windows host
 builds both Windows architectures. Pass `--target` repeatedly to choose an
